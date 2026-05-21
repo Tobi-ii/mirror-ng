@@ -1,0 +1,23 @@
+app = "mirror-ng"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[env]
+  DATABASE_URL = "sqlite:///./data/mirror.db"
+  JWT_ALGORITHM = "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES = "30"
+  FORWARDED_ALLOW_IPS = "*"
+  DEBUG = "false"
+
+[[mounts]]
+  source = "mirror_data"
+  destination = "/app/data"

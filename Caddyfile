@@ -1,0 +1,3 @@
+mirror.ng, www.mirror.ng {
+    reverse_proxy frontend:80
+}

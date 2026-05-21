@@ -1,0 +1,371 @@
+"""
+Mirror.ng Agent — LLM-powered financial assistant
+Primary: Groq (Llama 3.3 70B) | Fallback: DeepSeek
+"""
+
+import os
+import json
+import logging
+import re
+from typing import List, Dict, Any, Optional
+from openai import OpenAI
+
+logger = logging.getLogger(__name__)
+
+# ── LLM Clients ────────────────────────────────────────────────────────
+def get_groq_client():
+    return OpenAI(
+        api_key=os.getenv("GROQ_API_KEY"),
+        base_url="https://api.groq.com/openai/v1"
+    )
+
+def get_deepseek_client():
+    return OpenAI(
+        api_key=os.getenv("DEEPSEEK_API_KEY"),
+        base_url="https://api.deepseek.com/v1"
+    )
+
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+DEEPSEEK_MODEL = "deepseek-chat"
+
+# ── Tool Definitions ────────────────────────────────────────────────────
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_balance",
+            "description": "Get current account balances for all the user's bank accounts",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_transactions",
+            "description": "Get transaction history. Can filter by date or bank.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of transactions to fetch (default 20)"
+                    },
+                    "since_date": {
+                        "type": "string",
+                        "description": "Filter from this date onward. Format: YYYY-MM-DD"
+                    },
+                    "bank": {
+                        "type": "string",
+                        "description": "Filter by bank name e.g. 'Sterling Bank'"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_insights",
+            "description": "Get ML insights: 7-day spend forecast, anomaly detection, spending trends",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "summarize_spend",
+            "description": "Summarize spending by category for a given period",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "since_date": {
+                        "type": "string",
+                        "description": "Start date for summary. Format: YYYY-MM-DD"
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Filter to specific category e.g. 'Utilities', 'Transfer', 'Food'"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_narrations",
+            "description": "Search and analyze transaction narrations. Use for questions like 'what number did I top up most', 'who sent me money', 'which recipient got the most transfers'. Extracts patterns from narration text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tx_type": {
+                        "type": "string",
+                        "enum": ["debit", "credit", "all"],
+                        "description": "Filter by transaction type"
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "Optional keyword to filter narrations e.g. 'airtime', 'transfer', 'data'"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_largest_transactions",
+            "description": "Get the largest transactions by amount, useful for 'what was my biggest spend'",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tx_type": {
+                        "type": "string",
+                        "enum": ["debit", "credit", "all"],
+                        "description": "Filter by transaction type"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "How many to return (default 5)"
+                    }
+                },
+                "required": []
+            }
+        }
+    }
+]
+
+SYSTEM_PROMPT = """You are Mirror, an intelligent financial assistant built into Mirror.ng — a financial tracking tool for Nigerians.
+
+You analyze real bank alert data from Sterling Bank, Wema/ALAT, Kuda, OPay and other Nigerian banks.
+
+PERSONALITY:
+- Direct and sharp. No fluff.
+- Use ₦ for naira always. Format: ₦1,000.00
+- Conversational but precise.
+- Flag anything suspicious.
+- Give actionable insight, not just data.
+
+HOW TO HANDLE QUESTIONS:
+- "what number did i buy airtime for most" → use search_narrations with keyword="airtime" then analyze phone_number_breakdown
+- "who sent my highest credit" → use get_largest_transactions with tx_type="credit" then read narrations for sender names
+- "how much did i spend on transfers" → use summarize_spend with category="Transfer"  
+- "any unusual transactions" → use get_insights and report anomalies
+- "what's my balance" → use get_balance
+- "biggest expense" → use get_largest_transactions with tx_type="debit"
+- For ANY question about specific people, numbers, or narration content → use search_narrations
+
+RULES:
+- Always fetch real data with tools before answering.
+- Never make up numbers or names.
+- Extract phone numbers, recipient names, and sender names from narration text when relevant.
+- Keep responses concise unless user asks for detail.
+- If data is insufficient, say so clearly."""
+
+# ── Tool Executor ───────────────────────────────────────────────────────
+def execute_tool(tool_name: str, tool_args: Dict, user_id: str, db_conn) -> str:
+    try:
+        if tool_name == "get_balance":
+            from .balance_manager import BalanceManager
+            bm = BalanceManager(db_conn)
+            balances = bm.get_all_current_balances(user_id)
+
+            # Also compute from transactions for banks with no anchor
+            cursor = db_conn.execute(
+                'SELECT bank, account_last4, tx_type, amount FROM transactions WHERE user_id = ?',
+                (user_id,)
+            )
+            txs = cursor.fetchall()
+            
+            if txs:
+                banks_in_txs = set(t['bank'] for t in txs)
+                banks_with_anchor = set(b['bank'] for b in balances)
+
+                for bank in banks_in_txs - banks_with_anchor:
+                    bank_txs = [t for t in txs if t['bank'] == bank]
+                    last4 = next((t['account_last4'] for t in bank_txs if t['account_last4']), '????')
+                    net = sum(t['amount'] if t['tx_type'] == 'credit' else -t['amount'] for t in bank_txs)
+                    balances.append({
+                        'bank': bank,
+                        'account_last4': last4,
+                        'balance': net,
+                        'note': 'computed from transactions (no anchor set)'
+                    })
+
+            if not balances:
+                return "No account balances found."
+            return json.dumps(balances, default=str)
+
+        elif tool_name == "get_transactions":
+            limit = tool_args.get("limit", 20)
+            since_date = tool_args.get("since_date")
+            bank = tool_args.get("bank")
+
+            query = "SELECT * FROM transactions WHERE user_id = ?"
+            params = [user_id]
+            if since_date:
+                query += " AND timestamp >= ?"
+                params.append(since_date)
+            if bank:
+                query += " AND bank LIKE ?"
+                params.append(f"%{bank}%")
+
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
+
+            cursor = db_conn.execute(query, params)
+            txs = [dict(row) for row in cursor.fetchall()]
+            return json.dumps(txs, default=str) if txs else "No transactions found."
+
+        elif tool_name == "get_insights":
+            from .ml.anomaly import detect_anomalies
+            from .ml.forecaster import weekly_spend_forecast
+
+            cursor = db_conn.execute(
+                "SELECT * FROM transactions WHERE user_id = ? ORDER BY timestamp ASC",
+                (user_id,)
+            )
+            txs = [dict(row) for row in cursor.fetchall()]
+            anomalies = [t for t in detect_anomalies(txs) if t.get("is_anomaly")]
+            forecast = weekly_spend_forecast(txs)
+            return json.dumps({
+                "forecast": forecast,
+                "anomalies": anomalies,
+                "total_transactions": len(txs)
+            }, default=str)
+
+        elif tool_name == "summarize_spend":
+            since_date = tool_args.get("since_date")
+            category = tool_args.get("category")
+
+            query = "SELECT * FROM transactions WHERE user_id = ? AND tx_type = 'debit'"
+            params = [user_id]
+            if since_date:
+                query += " AND timestamp >= ?"
+                params.append(since_date)
+            if category:
+                query += " AND category LIKE ?"
+                params.append(f"%{category}%")
+
+            cursor = db_conn.execute(query, params)
+            txs = [dict(row) for row in cursor.fetchall()]
+
+            by_category: Dict[str, float] = {}
+            for tx in txs:
+                cat = tx.get("category", "General")
+                by_category[cat] = by_category.get(cat, 0) + float(tx["amount"])
+
+            return json.dumps({
+                "total_spent": sum(by_category.values()),
+                "by_category": by_category,
+                "transaction_count": len(txs),
+                "period_start": since_date or "all time"
+            }, default=str)
+
+        elif tool_name == "search_narrations":
+            tx_type = tool_args.get("tx_type", "all")
+            keyword = tool_args.get("keyword", "")
+
+            query = "SELECT narration, amount, tx_type, bank, timestamp FROM transactions WHERE user_id = ?"
+            params = [user_id]
+            if tx_type != "all":
+                query += " AND tx_type = ?"
+                params.append(tx_type)
+            if keyword:
+                query += " AND narration LIKE ?"
+                params.append(f"%{keyword}%")
+
+            query += " ORDER BY timestamp DESC"
+            cursor = db_conn.execute(query, params)
+            txs = [dict(row) for row in cursor.fetchall()]
+
+            phone_counts: Dict[str, Dict] = {}
+            for tx in txs:
+                narration = tx.get("narration", "")
+                phones = re.findall(r'0[789]\d{9}', narration)
+                for phone in phones:
+                    if phone not in phone_counts:
+                        phone_counts[phone] = {"count": 0, "total_amount": 0, "transactions": []}
+                    phone_counts[phone]["count"] += 1
+                    phone_counts[phone]["total_amount"] += float(tx["amount"])
+                    phone_counts[phone]["transactions"].append({
+                        "narration": narration, "amount": tx["amount"], "date": tx["timestamp"]
+                    })
+
+            return json.dumps({
+                "total_matched": len(txs),
+                "phone_number_breakdown": phone_counts,
+                "raw_narrations": [{"narration": t["narration"], "amount": t["amount"], "tx_type": t["tx_type"]} for t in txs[:30]]
+            }, default=str)
+
+        elif tool_name == "get_largest_transactions":
+            tx_type = tool_args.get("tx_type", "all")
+            limit = tool_args.get("limit", 5)
+            query = "SELECT * FROM transactions WHERE user_id = ?"
+            params = [user_id]
+            if tx_type != "all":
+                query += " AND tx_type = ?"
+                params.append(tx_type)
+            query += " ORDER BY amount DESC LIMIT ?"
+            params.append(limit)
+            cursor = db_conn.execute(query, params)
+            return json.dumps([dict(row) for row in cursor.fetchall()], default=str)
+
+        return f"Unknown tool: {tool_name}"
+
+    except Exception as e:
+        logger.error(f"Tool error ({tool_name}): {e}")
+        return f"Error: {str(e)}"
+
+# ── Agent Loop ──────────────────────────────────────────────────────────
+def run_agent(user_id: str, message: str, history: List[Dict], db_conn) -> Dict:
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history, {"role": "user", "content": message}]
+    tool_calls_made = []
+    
+    def call_llm(client, model, msgs):
+        return client.chat.completions.create(
+            model=model, messages=msgs, tools=TOOLS, tool_choice="auto", temperature=0.3, max_tokens=1024
+        )
+
+    try:
+        client = get_groq_client()
+        response = call_llm(client, GROQ_MODEL, messages)
+        model_used = f"groq/{GROQ_MODEL}"
+    except Exception:
+        client = get_deepseek_client()
+        response = call_llm(client, DEEPSEEK_MODEL, messages)
+        model_used = f"deepseek/{DEEPSEEK_MODEL}"
+
+    for _ in range(5):
+        if response.choices[0].finish_reason != "tool_calls":
+            break
+            
+        assistant_msg = response.choices[0].message
+        messages.append({"role": "assistant", "content": assistant_msg.content or "", "tool_calls": assistant_msg.tool_calls})
+
+        for tool_call in assistant_msg.tool_calls:
+            tool_name = tool_call.function.name
+            tool_args = json.loads(tool_call.function.arguments or "{}")
+            tool_calls_made.append({"tool": tool_name, "args": tool_args})
+            
+            result = execute_tool(tool_name, tool_args, user_id, db_conn)
+            messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
+
+        response = call_llm(client, GROQ_MODEL if "groq" in model_used else DEEPSEEK_MODEL, messages)
+
+    return {
+        "response": response.choices[0].message.content or "I couldn't generate a response.",
+        "tool_calls_made": tool_calls_made,
+        "model_used": model_used
+    }

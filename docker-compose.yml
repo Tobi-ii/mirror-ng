@@ -1,0 +1,56 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "8000:8000"
+    environment:
+      - FORWARDED_ALLOW_IPS=*
+      - DATABASE_URL=sqlite:///./data/mirror.db
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:8000/api/auth/google/callback}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:80,http://localhost:3000,http://localhost:5173}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:80}
+      - YAHOO_EMAIL=${YAHOO_EMAIL:-}
+      - YAHOO_APP_PASSWORD=${YAHOO_APP_PASSWORD:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DEBUG=${DEBUG:-false}
+    volumes:
+      - db_data:/app/data
+    networks:
+      - mirror-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - mirror-net
+    restart: unless-stopped
+
+volumes:
+  db_data:
+
+networks:
+  mirror-net:
+    driver: bridge
