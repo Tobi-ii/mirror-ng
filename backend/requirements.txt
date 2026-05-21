@@ -70,7 +70,7 @@ websockets==12.0
 # --- UTILITIES ---
 python-dateutil==2.8.2
 pytz==2023.3
-typing-extensions==4.12.2
+typing-extensions
 attrs==23.2.0
 tenacity==8.2.3
 colorama==0.4.6
