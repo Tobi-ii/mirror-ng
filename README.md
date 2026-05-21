@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Mirror.ng - Your Financial Mirror
 
 Track all your Nigerian bank accounts in one place. No APIs needed - just your email alerts.
@@ -198,3 +199,7 @@ For auto-deploy on `git push`, add these secrets to your GitHub repo:
 ## License
 
 MIT
+=======
+# mirror-ng
+Open-source financial dashboard for Nigerian bank alerts. Multi-bank, ML-powered, self-hostable.
+>>>>>>> 1edaaeb1a5481a989907d423d8d738128e1336ba
