@@ -136,7 +136,10 @@ class BalanceManager:
         return row['balance'] if row else None
     
     def get_all_current_balances(self, user_id: str) -> List[Dict]:
-        """Get current balances — one per bank, best entry wins."""
+        """Get current balances — one per (bank, account_last4) pair.
+        If the same bank has entries with and without real last4s, keep the real one.
+        If it has multiple real last4s, they are different accounts — keep all.
+        """
         cursor = self.db.execute('''
             SELECT DISTINCT bank, account_last4, balance, last_updated, is_anchor
             FROM account_balances 
@@ -151,24 +154,24 @@ class BalanceManager:
         
         rows = [dict(row) for row in cursor.fetchall()]
         
-        # One entry per bank — prefer real last4, then latest timestamp
-        best_per_bank = {}
+        # Group by bank, then keep only distinct (bank, last4) — prefer real last4
+        by_bank: Dict[str, List[Dict]] = {}
         for r in rows:
-            bank = r['bank']
-            existing = best_per_bank.get(bank)
-            if existing is None:
-                best_per_bank[bank] = r
-                continue
-            
-            r_last4 = (r.get('account_last4') or '').strip()
-            e_last4 = (existing.get('account_last4') or '').strip()
-            r_has_real = r_last4 not in ('', '0000')
-            e_has_real = e_last4 not in ('', '0000')
-            
-            if r_has_real and not e_has_real:
-                best_per_bank[bank] = r
-            elif r_has_real == e_has_real:
-                if (r.get('last_updated') or '') > (existing.get('last_updated') or ''):
-                    best_per_bank[bank] = r
+            by_bank.setdefault(r['bank'], []).append(r)
         
-        return list(best_per_bank.values())
+        result = []
+        for bank, entries in by_bank.items():
+            real = [e for e in entries if (e.get('account_last4') or '').strip() not in ('', '0000')]
+            if real:
+                # Keep all distinct real last4 accounts
+                seen_last4 = set()
+                for e in real:
+                    last4 = (e.get('account_last4') or '').strip()
+                    if last4 not in seen_last4:
+                        seen_last4.add(last4)
+                        result.append(e)
+            else:
+                # No real last4s — keep the latest
+                result.append(max(entries, key=lambda e: e.get('last_updated') or ''))
+        
+        return result
