@@ -136,7 +136,7 @@ class BalanceManager:
         return row['balance'] if row else None
     
     def get_all_current_balances(self, user_id: str) -> List[Dict]:
-        """Get current balances — one per bank, latest entry wins."""
+        """Get current balances — one per bank, best entry wins."""
         cursor = self.db.execute('''
             SELECT DISTINCT bank, account_last4, balance, last_updated, is_anchor
             FROM account_balances 
@@ -151,14 +151,24 @@ class BalanceManager:
         
         rows = [dict(row) for row in cursor.fetchall()]
         
-        # One entry per bank — latest last_updated wins
+        # One entry per bank — prefer real last4, then latest timestamp
         best_per_bank = {}
         for r in rows:
             bank = r['bank']
-            if bank not in best_per_bank:
+            existing = best_per_bank.get(bank)
+            if existing is None:
                 best_per_bank[bank] = r
-            else:
-                if (r['last_updated'] or '') > (best_per_bank[bank].get('last_updated') or ''):
+                continue
+            
+            r_last4 = (r.get('account_last4') or '').strip()
+            e_last4 = (existing.get('account_last4') or '').strip()
+            r_has_real = r_last4 not in ('', '0000')
+            e_has_real = e_last4 not in ('', '0000')
+            
+            if r_has_real and not e_has_real:
+                best_per_bank[bank] = r
+            elif r_has_real == e_has_real:
+                if (r.get('last_updated') or '') > (existing.get('last_updated') or ''):
                     best_per_bank[bank] = r
         
         return list(best_per_bank.values())
