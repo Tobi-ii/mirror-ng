@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 class WemaBankParser(BankParser):
     BANK_NAME      = "Wema Bank"
-    SENDER_PATTERN = r"no-reply@alat\.ng|wemabank\.com"
+    SENDER_PATTERN = r"no-reply@alat\.ng|wemabank\.com|no-reply@11054915\.brevosend\.com"
     PROVIDES_BALANCE = True
 
     def parse(self, subject: str, body: str) -> Optional[Transaction]:

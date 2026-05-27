@@ -616,6 +616,7 @@ async def sync_transactions(request: SyncRequest, req: Request):
         sender_patterns = [
             "e-business@sterling.ng",       # Sterling transaction alerts
             "no-reply@alat.ng",             # ALAT (Wema) alerts
+            "no-reply@11054915.brevosend.com", # Wema via Brevosend
             "no-reply@opay-nigeria.com",    # OPay alerts
             "gtbank.com",
             "accessbankplc.com",
