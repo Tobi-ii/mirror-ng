@@ -196,15 +196,28 @@ def apply_aliases_to_narration(narration: str, aliases: List[Dict]) -> str:
 
 def clean_tx_narration(tx: Dict, aliases: List[Dict]) -> Dict:
     """Apply aliases and shorten common prefixes on a transaction dict."""
-    tx = dict(tx)  # don't mutate original
+    tx = dict(tx)
     raw = tx.get('narration', '') or ''
     aliased = apply_aliases_to_narration(raw, aliases)
-    # Remove common raw prefixes for agent responses
     cleaned = aliased
-    for prefix in ['BANKNIP From', 'NIP:', 'OneBank Transfer from', '00000']:
-        if cleaned.startswith(prefix):
-            cleaned = cleaned[len(prefix):].strip()
-            break
+
+    # Remove leading reference number: "000001260515072215138153450611 | ..."
+    cleaned = re.sub(r'^\d+\s*\|\s*', '', cleaned).strip()
+
+    # "OneBank Transfer from X to Y" → "Transfer to Y"
+    m = re.search(r'OneBank\s+Transfer\s+from\s+.*?\s+to\s+(.+)', cleaned, re.IGNORECASE)
+    if m:
+        to_part = m.group(1).strip()
+        # Clean parenthetical suffixes: "Name(Extra)" → "Name"
+        to_part = re.sub(r'\(.*?\)', '', to_part).strip()
+        cleaned = f"Transfer to {to_part}"
+    else:
+        # Other known prefixes to strip
+        for prefix in ['BANKNIP From', 'NIP:', 'OneBank Transfer from', '00000']:
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix):].strip()
+                break
+
     tx['narration'] = cleaned or aliased
     return tx
 
@@ -294,17 +307,17 @@ def execute_tool(tool_name: str, tool_args: Dict, user_id: str, db_conn) -> str:
                 params.append(since_date)
 
             cursor = db_conn.execute(query, params)
-            txs = [clean_tx_narration(dict(row), aliases) for row in cursor.fetchall()]
+            rows = [dict(row) for row in cursor.fetchall()]
 
-            # Apply aliases to get effective category, then filter and sum
-            def effective_category(tx):
+            def effective_category(row):
+                raw_narration = row.get('narration', '') or ''
                 for a in aliases:
-                    if a['recipient_pattern'].lower() in (tx.get('narration', '') or '').lower():
-                        return a.get('category') or tx.get('category', 'General') or 'General'
-                return tx.get('category', 'General') or 'General'
+                    if a['recipient_pattern'].lower() in raw_narration.lower():
+                        return a.get('category') or row.get('category', 'General') or 'General'
+                return row.get('category', 'General') or 'General'
 
             by_category: Dict[str, float] = {}
-            for tx in txs:
+            for tx in rows:
                 cat = effective_category(tx)
                 if category and category.lower() not in cat.lower():
                     continue
