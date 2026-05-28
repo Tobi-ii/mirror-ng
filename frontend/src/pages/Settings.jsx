@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Trash2, LogOut, Pencil, Check, X, AlertTriangle, Sparkles, Cloud, CloudOff, Download, Upload } from 'lucide-react';
-import { api, setCloudSync, isCloudSync } from '../services/api';
+import { api, setCloudSync, isCloudSync, exportCSV } from '../services/api';
 import { localData } from '../services/localData';
 
 export function Settings({ userId, onBack, onLogout, transactions, onDataChanged, onCloudSyncChange }) {
@@ -231,6 +231,25 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
             )}
           </div>
         </section>
+
+        {/* CSV Export */}
+        <div className="bg-[#0a0c10] border border-white/5 rounded-2xl px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Download size={18} className="text-indigo-400" />
+            <div>
+              <p className="text-xs sm:text-sm font-bold">Export CSV</p>
+              <p className="text-[8px] sm:text-[10px] text-slate-500 mt-0.5">
+                Download all transactions with alias categories
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => exportCSV(transactions || [], aliases)}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black rounded-xl transition-all uppercase tracking-wider"
+          >
+            Download
+          </button>
+        </div>
 
         {/* Migration Confirmation Modal */}
         {showMigrateConfirm && (

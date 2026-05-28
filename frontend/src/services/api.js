@@ -414,6 +414,43 @@ export const api = {
 };
 
 /**
+ * Export transactions as CSV with alias-based category.
+ * Columns: Date, Narration, Amount, Category
+ * Category = the alias display_name if a match exists.
+ */
+export function exportCSV(transactions, aliases, filename = 'mirror-ng.csv') {
+  const esc = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+
+  const rows = transactions.map(tx => {
+    const narration = (tx.narration || '').trim();
+    const match = aliases.find(a =>
+      narration.toLowerCase().includes((a.recipient_pattern || '').toLowerCase())
+    );
+    return {
+      date: tx.timestamp ? tx.timestamp.split('T')[0] : '',
+      narration: match ? match.display_name : narration,
+      amount: tx.tx_type === 'credit' ? tx.amount : -(tx.amount || 0),
+      category: match ? (match.display_name || '') : ''
+    };
+  });
+
+  const header = 'Date,Narration,Amount,Category';
+  const csv = [header, ...rows.map(r =>
+    [esc(r.date), esc(r.narration), r.amount, esc(r.category)].join(',')
+  )].join('\r\n');
+
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
  * Fallback: Local intelligent grouping and suggestion generator
  */
 function generateLocalSuggestions(narrations) {
