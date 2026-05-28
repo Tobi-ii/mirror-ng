@@ -292,16 +292,22 @@ def execute_tool(tool_name: str, tool_args: Dict, user_id: str, db_conn) -> str:
             if since_date:
                 query += " AND timestamp >= ?"
                 params.append(since_date)
-            if category:
-                query += " AND category LIKE ?"
-                params.append(f"%{category}%")
 
             cursor = db_conn.execute(query, params)
-            txs = [dict(row) for row in cursor.fetchall()]
+            txs = [clean_tx_narration(dict(row), aliases) for row in cursor.fetchall()]
+
+            # Apply aliases to get effective category, then filter and sum
+            def effective_category(tx):
+                for a in aliases:
+                    if a['recipient_pattern'].lower() in (tx.get('narration', '') or '').lower():
+                        return a.get('category') or tx.get('category', 'General') or 'General'
+                return tx.get('category', 'General') or 'General'
 
             by_category: Dict[str, float] = {}
             for tx in txs:
-                cat = tx.get("category", "General")
+                cat = effective_category(tx)
+                if category and category.lower() not in cat.lower():
+                    continue
                 by_category[cat] = by_category.get(cat, 0) + float(tx["amount"])
 
             return json.dumps({
@@ -359,7 +365,25 @@ def execute_tool(tool_name: str, tool_args: Dict, user_id: str, db_conn) -> str:
             params.append(limit)
             cursor = db_conn.execute(query, params)
             txs = [clean_tx_narration(dict(row), aliases) for row in cursor.fetchall()]
-            return json.dumps(txs, default=str)
+            results = []
+            for tx in txs:
+                narration = tx.get('narration', '') or ''
+                # Extract likely sender name (words after 'from', 'to', or first 3 words)
+                sender = ''
+                from_m = re.search(r'(?:from|sent by|via)\s+([A-Z][A-Za-z .]+)', narration, re.IGNORECASE)
+                if from_m:
+                    sender = from_m.group(1).strip()
+                if not sender:
+                    sender = ' '.join(narration.split()[:3])
+                results.append({
+                    "bank": tx.get('bank', ''),
+                    "amount": tx.get('amount', 0),
+                    "narration": narration,
+                    "sender_recipient": sender,
+                    "date": tx.get('timestamp', ''),
+                    "tx_type": tx.get('tx_type', '')
+                })
+            return json.dumps(results, default=str)
 
         return f"Unknown tool: {tool_name}"
 
