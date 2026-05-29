@@ -324,11 +324,13 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
                   ) : (
                     <span className="text-xs sm:text-sm font-black tabular-nums font-mono">{fmt(b.balance)}</span>
                   )}
-                  <button onClick={() => { setEditingBal(i); setEditValue(b.balance); }}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 sm:p-2 hover:bg-white/10 rounded-lg transition-all">
-                    <Pencil size={10} className="sm:size-[12px] text-slate-500" />
-                  </button>
-                  {(isManual || cat === 'anchor_needed') && (
+                  {!isAutoTracked && (
+                    <button onClick={() => { setEditingBal(i); setEditValue(b.balance); }}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 sm:p-2 hover:bg-white/10 rounded-lg transition-all">
+                      <Pencil size={10} className="sm:size-[12px] text-slate-500" />
+                    </button>
+                  )}
+                  {isManual && (
                     <button onClick={() => handleDeleteBalance(b.bank, b.account_last4)}
                       className="opacity-0 group-hover:opacity-100 p-1.5 sm:p-2 hover:bg-rose-500/10 rounded-lg transition-all">
                       <Trash2 size={10} className="sm:size-[12px] text-rose-400" />

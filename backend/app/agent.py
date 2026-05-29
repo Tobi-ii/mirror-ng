@@ -169,9 +169,12 @@ HOW TO HANDLE QUESTIONS:
 RULES:
 - Always fetch real data with tools before answering.
 - Never make up numbers or names.
+- Never use placeholder text like "[insert name]" or "[extracted sender]". Use the actual data from tool results.
+- If a tool returns data, read the fields carefully and use the actual values in your response.
 - Extract phone numbers, recipient names, and sender names from narration text when relevant.
 - Keep responses concise unless user asks for detail.
-- If data is insufficient, say so clearly."""
+- If data is insufficient, say so clearly.
+- NEVER invent a merchant name, store name, or recipient that isn't in the data."""
 
 def load_aliases(db_conn, user_id: str) -> List[Dict]:
     """Load user aliases for narration cleaning."""
