@@ -157,6 +157,16 @@ export const api = {
   getBalances: async (userId) => {
     if (!_cloudSync) {
       const bals = await localData.getBalances(userId);
+      const PROVIDES_BALANCE_BY_BANK = {
+        'Sterling Bank': false, 'Wema Bank': true, 'ALAT': true,
+        'OPay': true, 'Kuda': true, 'GTBank': true, 'Access Bank': true,
+        'Stanbic IBTC': true, 'Standard Chartered': true, 'Moniepoint': true
+      };
+      for (const b of bals) {
+        b.provides_balance = PROVIDES_BALANCE_BY_BANK[b.bank] || false;
+        b.is_anchor = !!b.is_anchor;
+        b.balance = b.balance || 0;
+      }
       return { success: true, balances: bals, total_accounts: bals.length };
     }
     const res = await authFetch(`${API_BASE}/api/balances/${String(userId)}`);
