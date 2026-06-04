@@ -170,6 +170,8 @@ class AgentChatRequest(BaseModel):
     message: str
     history: List[dict] = []
     local_transactions: List[dict] = []
+    since_date: Optional[str] = None
+    until_date: Optional[str] = None
 
     class Config:
         json_schema_extra = {

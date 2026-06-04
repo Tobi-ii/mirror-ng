@@ -507,7 +507,7 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
             </>
           )}
 
-          {activeTab === 'ask' && <AgentChat userId={userId} />}
+          {activeTab === 'ask' && <AgentChat userId={userId} sinceDate={sinceDate} untilDate={untilDate} />}
           {activeTab === 'insights' && <InsightsPanel userId={userId} />}
 
           {activeTab === 'history' && (

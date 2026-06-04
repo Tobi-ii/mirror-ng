@@ -174,7 +174,11 @@ RULES:
 - Extract phone numbers, recipient names, and sender names from narration text when relevant.
 - Keep responses concise unless user asks for detail.
 - If data is insufficient, say so clearly.
-- NEVER invent a merchant name, store name, or recipient that isn't in the data."""
+- NEVER invent a merchant name, store name, or recipient that isn't in the data.
+
+AUDIT CONTEXT (current view window):
+- Period: {since_date} to {until_date or "present"}
+- When asked about spend, transfers, or any time-bounded question, use this period automatically. Do NOT ask the user to specify a date range — the audit window is already set."""
 
 def load_aliases(db_conn, user_id: str) -> List[Dict]:
     """Load user aliases for narration cleaning."""
@@ -408,8 +412,9 @@ def execute_tool(tool_name: str, tool_args: Dict, user_id: str, db_conn) -> str:
         return f"An error occurred while processing that request."
 
 # ── Agent Loop ──────────────────────────────────────────────────────────
-def run_agent(user_id: str, message: str, history: List[Dict], db_conn) -> Dict:
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history, {"role": "user", "content": message}]
+def run_agent(user_id: str, message: str, history: List[Dict], db_conn, since_date: Optional[str] = None, until_date: Optional[str] = None) -> Dict:
+    prompt = SYSTEM_PROMPT.format(since_date=since_date or "earliest", until_date=until_date or "present")
+    messages = [{"role": "system", "content": prompt}, *history, {"role": "user", "content": message}]
     tool_calls_made = []
     
     def call_llm(client, model, msgs):

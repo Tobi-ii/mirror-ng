@@ -786,7 +786,9 @@ async def agent_chat(request: AgentChatRequest, req: Request):
                 user_id=request.user_id,
                 message=request.message,
                 history=request.history,
-                db_conn=mem_db
+                db_conn=mem_db,
+                since_date=request.since_date,
+                until_date=request.until_date
             )
             return JSONResponse({"success": True, **result})
         finally:
@@ -798,7 +800,9 @@ async def agent_chat(request: AgentChatRequest, req: Request):
                 user_id=request.user_id,
                 message=request.message,
                 history=request.history,
-                db_conn=conn
+                db_conn=conn,
+                since_date=request.since_date,
+                until_date=request.until_date
             )
             return JSONResponse({"success": True, **result})
         except Exception as e:

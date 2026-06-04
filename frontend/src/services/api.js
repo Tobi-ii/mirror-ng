@@ -317,8 +317,10 @@ export const api = {
   /**
    * LLM Agent Chat (Original - Tool-based)
    */
-  chat: async (userId, message, history = []) => {
+  chat: async (userId, message, history = [], sinceDate, untilDate) => {
     const body = { user_id: String(userId), message, history };
+    if (sinceDate) body.since_date = sinceDate;
+    if (untilDate) body.until_date = untilDate;
     if (!_cloudSync) {
       const txs = await localData.getTransactions(userId);
       body.local_transactions = txs;

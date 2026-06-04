@@ -13,7 +13,7 @@ const SUGGESTIONS = [
   "What was my biggest single debit?",
 ]
 
-export default function AgentChat({ userId }) {
+export default function AgentChat({ userId, sinceDate, untilDate }) {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -45,7 +45,7 @@ export default function AgentChat({ userId }) {
     setLoading(true)
 
     try {
-      const res = await api.chat(userId, userMsg, buildHistory())
+      const res = await api.chat(userId, userMsg, buildHistory(), sinceDate, untilDate)
       if (res.success) {
         setMessages(prev => [...prev, {
           role: 'assistant',
