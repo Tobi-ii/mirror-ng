@@ -125,6 +125,14 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
     if (!showOnboarding) localStorage.setItem(`mirror_onboarded_${userId}`, 'true');
   }, [showOnboarding, userId]);
 
+  // Load data on mount when user is already onboarded (e.g. page refresh)
+  useEffect(() => {
+    if (userId && !showOnboarding) {
+      refreshTransactions();
+      refreshBalances();
+    }
+  }, [userId]);
+
   const [sinceDate, setSinceDate] = useState('2026-01-01');
   const [untilDate, setUntilDate] = useState(null);
 
