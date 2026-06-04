@@ -3,7 +3,7 @@ import Dashboard from './pages/Dashboard';
 import { Landing } from './pages/Landing';
 import { BalanceProvider } from './contexts/BalanceContext';
 import { BlurProvider } from './hooks/useBlurContext';
-import { setPassword, clearPassword, setCloudSync, setUserId, api } from './services/api';
+import { setPassword, clearPassword, setCloudSync, setUserId, setToken, clearToken, api } from './services/api';
 
 function App() {
   const [view, setView] = useState('loading');
@@ -25,6 +25,8 @@ function App() {
         token: callbackToken
       };
       setUser(fullUser);
+      setUserId(callbackUserId);
+      setToken(callbackToken);
       window.history.replaceState({}, document.title, window.location.pathname);
       setView('dashboard');
       return;
@@ -41,6 +43,9 @@ function App() {
     };
     setUser(fullUser);
     setUserId(fullUser.user_id);
+    if (tokenData?.access_token) {
+      setToken(tokenData.access_token);
+    }
     if (password) {
       setEmailPassword(password);
       setPassword(password);
@@ -63,6 +68,7 @@ function App() {
     if (userId) localStorage.removeItem(`mirror_onboarded_${userId}`);
     setEmailPassword(null);
     clearPassword();
+    clearToken();
     setCloudSync(true);
     setUserId(null);
     setUser(null);

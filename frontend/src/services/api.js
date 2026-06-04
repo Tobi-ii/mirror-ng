@@ -10,6 +10,7 @@ const API_BASE = '';
 let _password = null;
 let _cloudSync = true;
 let _userId = null;
+let _token = null;
 
 export function setPassword(pwd) {
   _password = pwd;
@@ -31,7 +32,16 @@ export function setUserId(id) {
   _userId = id;
 }
 
+export function setToken(token) {
+  _token = token;
+}
+
+export function clearToken() {
+  _token = null;
+}
+
 function getToken() {
+  if (_token) return _token;
   try {
     const user = JSON.parse(localStorage.getItem('mirror_user') || '{}');
     return user.token || null;
@@ -54,9 +64,9 @@ async function authFetch(url, options = {}) {
   }
   const res = await fetch(url, { ...options, headers });
   if (res.status === 401) {
-    localStorage.removeItem('mirror_user');
+    clearToken();
     clearPassword();
-    window.location.href = '/';
+    throw new Error('Unauthorized');
   }
   return res;
 }
