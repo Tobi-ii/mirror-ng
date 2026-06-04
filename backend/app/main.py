@@ -758,6 +758,14 @@ def _make_local_db(transactions):
             timestamp TEXT, category TEXT
         )
     ''')
+    mem.execute('''
+        CREATE TABLE account_balances (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL, bank TEXT NOT NULL,
+            account_last4 TEXT NOT NULL, balance REAL NOT NULL,
+            last_updated TEXT NOT NULL
+        )
+    ''')
     for tx in transactions:
         mem.execute('''
             INSERT INTO transactions (user_id, bank, tx_type, amount, balance_after, narration, account_last4, timestamp, category)

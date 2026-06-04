@@ -236,9 +236,13 @@ def execute_tool(tool_name: str, tool_args: Dict, user_id: str, db_conn) -> str:
 
         if tool_name == "get_balance":
             from .balance_manager import BalanceManager
-            bm = BalanceManager(db_conn)
-            balances = bm.get_all_current_balances(user_id)
-
+            balances = []
+            try:
+                bm = BalanceManager(db_conn)
+                balances = bm.get_all_current_balances(user_id)
+            except Exception:
+                balances = []
+            
             # Also compute from transactions for banks with no anchor
             cursor = db_conn.execute(
                 'SELECT bank, account_last4, tx_type, amount FROM transactions WHERE user_id = ?',
