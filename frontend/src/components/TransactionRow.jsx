@@ -103,7 +103,7 @@ function groupSimilarTransactions(transactions) {
 }
 
 // Individual Transaction Component - now editable for all types (including aliased and credits)
-function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true, selected, onToggleSelect }) {
+function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true, onEditingChange }) {
   const [isEditing, setIsEditing] = useState(false);
   const [aliasName, setAliasName] = useState(tx?.narration || '');
   const [category, setCategory] = useState(tx?.category || 'General');
@@ -148,6 +148,7 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
       
       setIsAliased(true);
       setIsEditing(false);
+      if (onEditingChange) onEditingChange(tx.id, false);
       if (onAliasUpdate) onAliasUpdate();
     } catch (error) {
       console.error('Failed to save alias:', error);
@@ -168,6 +169,7 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
     setIsEditing(false);
     setAliasName(tx.narration || '');
     setCategory(tx.category || 'General');
+    if (onEditingChange) onEditingChange(tx.id, false);
   };
 
   // Always show edit button if showEditButton is true (now for credits too)
@@ -226,14 +228,6 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
       ) : (
         <>
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            {onToggleSelect && (
-              <button onClick={onToggleSelect}
-                className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${
-                  selected ? 'bg-indigo-600 border-indigo-500' : 'border-white/20 hover:border-white/40'
-                }`}>
-                {selected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-              </button>
-            )}
             <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${theme.dot}`} />
 
             <div className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center ${
@@ -293,6 +287,7 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
                   setIsEditing(true);
                   setAliasName(tx.narration);
                   setCategory(tx.category || 'General');
+                  if (onEditingChange) onEditingChange(tx.id, true);
                 }}
                 className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-white/10 rounded-lg transition-all"
               >
@@ -314,14 +309,6 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
   const [batchName, setBatchName] = useState(category);
   const [batchCategory, setBatchCategory] = useState(category);
   const [isSaving, setIsSaving] = useState(false);
-
-  const toggleSelection = (id) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
 
   const handleAliasAll = async () => {
     setIsSaving(true);
@@ -360,6 +347,14 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleEditingChange = (id, editing) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (editing) next.add(id); else next.delete(id);
+      return next;
+    });
   };
 
   const toggleExpand = () => {
@@ -425,8 +420,7 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
               isAliased={true}
               index={idx}
               showEditButton={true}
-              selected={selectedIds.has(tx.id)}
-              onToggleSelect={() => toggleSelection(tx.id)}
+              onEditingChange={handleEditingChange}
             />
           ))}
         </div>
@@ -447,10 +441,10 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
 
   if (!group || !group.transactions) return null;
 
-  const toggleSelection = (id) => {
+  const handleEditingChange = (id, editing) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (editing) next.add(id); else next.delete(id);
       return next;
     });
   };
@@ -563,8 +557,7 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
               isAliased={allAliased || tx.aliased}
               index={idx}
               showEditButton={true}
-              selected={selectedIds.has(tx.id)}
-              onToggleSelect={() => toggleSelection(tx.id)}
+              onEditingChange={handleEditingChange}
             />
           ))}
         </div>
@@ -596,10 +589,11 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
   const [flatShowForm, setFlatShowForm] = useState(false);
   const [flatSection, setFlatSection] = useState(null); // 'pending' or 'credits'
 
-  const toggleFlatSelection = (id) => {
+  const handleFlatEditingChange = (section) => (id, editing) => {
+    setFlatSection(section);
     setFlatBatchIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (editing) next.add(id); else next.delete(id);
       return next;
     });
   };
@@ -814,8 +808,7 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   isAliased={false}
                   index={idx}
                   showEditButton={true}
-                  selected={flatBatchIds.has(tx.id) && flatSection === 'pending'}
-                  onToggleSelect={() => { setFlatSection('pending'); toggleFlatSelection(tx.id); }}
+                  onEditingChange={handleFlatEditingChange('pending')}
                 />
               ))}
             </div>
@@ -876,8 +869,7 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   isAliased={false}
                   index={idx}
                   showEditButton={true}
-                  selected={flatBatchIds.has(tx.id) && flatSection === 'credits'}
-                  onToggleSelect={() => { setFlatSection('credits'); toggleFlatSelection(tx.id); }}
+                  onEditingChange={handleFlatEditingChange('credits')}
                 />
               ))}
             </div>
