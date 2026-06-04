@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Trash2, LogOut, Pencil, Check, X, AlertTriangle, Sparkles, Cloud, CloudOff, Download, Upload } from 'lucide-react';
+import { ArrowLeft, Trash2, LogOut, Pencil, Check, X, AlertTriangle, Sparkles, Cloud, CloudOff, Download, Upload, ChevronDown, ChevronRight } from 'lucide-react';
 import { api, setCloudSync, isCloudSync, exportCSV } from '../services/api';
 import { localData } from '../services/localData';
 
@@ -13,6 +13,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
   const [deletingAlias, setDeletingAlias] = useState(null);
   const [clearingAliases, setClearingAliases] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [expandedAliasGroups, setExpandedAliasGroups] = useState({});
   const [cloudSync, setCloudSyncLocal] = useState(true);
   const [migrating, setMigrating] = useState(false);
   const [showMigrateConfirm, setShowMigrateConfirm] = useState(false);
@@ -380,36 +381,41 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
           <div className="space-y-2">
             {aliases.length === 0 ? (
               <p className="text-slate-600 text-sm italic py-8 text-center">No aliases defined.</p>
-            ) : aliases.map((a, i) => (
-              <div key={i} className="flex items-center justify-between bg-[#0a0c10] border border-white/5 rounded-2xl px-4 sm:px-6 py-3 sm:py-4 group hover:border-white/10 transition-all">
-                <div className="min-w-0 flex-1 mr-2 sm:mr-4">
-                  <p className="text-xs sm:text-sm font-bold text-indigo-300 truncate">{a.display_name}</p>
-                  <p className="text-[8px] sm:text-[10px] text-slate-600 truncate font-mono">
-                    Pattern: {a.recipient_pattern?.slice(0, 30)}
-                    {a.category && <span className="ml-1 sm:ml-2 text-slate-500">· {a.category}</span>}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-                  {deletingAlias === i ? (
-                    <>
-                      <button onClick={() => handleDeleteAlias(a.id)}
-                        className="text-[8px] sm:text-[9px] px-2 sm:px-3 py-1 sm:py-1.5 bg-rose-500/20 text-rose-400 rounded-lg font-black uppercase tracking-wider hover:bg-rose-500/30 transition-colors">
-                        Confirm
-                      </button>
-                      <button onClick={() => setDeletingAlias(null)}
-                        className="p-1 sm:p-1.5 hover:bg-white/10 rounded-lg transition-all">
-                        <X size={10} className="sm:size-[12px] text-slate-500" />
-                      </button>
-                    </>
-                  ) : (
-                    <button onClick={() => setDeletingAlias(i)}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 sm:p-2 hover:bg-rose-500/10 rounded-lg transition-all">
-                      <Trash2 size={10} className="sm:size-[12px] text-rose-400" />
-                    </button>
+            ) : Object.entries(aliases.reduce((g, a) => {
+              const key = a.display_name || 'Unnamed';
+              (g[key] = g[key] || []).push(a);
+              return g;
+            }, {})).map(([name, items]) => {
+              const isOpen = expandedAliasGroups[name] ?? false;
+              return (
+                <div key={name} className="bg-[#0a0c10] border border-white/5 rounded-2xl overflow-hidden">
+                  <button onClick={() => setExpandedAliasGroups(p => ({ ...p, [name]: !(p[name] ?? false) }))}
+                    className="w-full flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 hover:bg-white/[0.02] transition-all">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isOpen ? <ChevronDown size={12} className="text-slate-500 shrink-0" /> : <ChevronRight size={12} className="text-slate-500 shrink-0" />}
+                      <span className="text-xs sm:text-sm font-bold text-indigo-300">{name}</span>
+                      <span className="text-[8px] px-1.5 py-0.5 bg-white/10 rounded-full">{items.length}</span>
+                      {items[0].category && <span className="text-[8px] text-slate-500">· {items[0].category}</span>}
+                    </div>
+                  </button>
+                  {isOpen && (
+                    <div className="px-4 sm:px-6 pb-3 space-y-1 border-t border-white/5 pt-2">
+                      {items.map((a, i) => (
+                        <div key={a.id || i} className="flex items-center justify-between group hover:bg-white/[0.02] rounded-lg px-2 py-1.5 transition-all">
+                          <p className="text-[8px] sm:text-[10px] text-slate-600 truncate font-mono flex-1 min-w-0">
+                            {a.recipient_pattern?.slice(0, 50)}
+                          </p>
+                          <button onClick={() => handleDeleteAlias(a.id)}
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-rose-500/10 rounded-lg transition-all shrink-0 ml-2">
+                            <Trash2 size={8} className="text-rose-400" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
