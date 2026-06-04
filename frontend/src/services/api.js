@@ -262,10 +262,11 @@ export const api = {
       const intercept = yMean - slope * xMean;
       const lastX = X[X.length - 1];
       const lastDate = new Date(dates[dates.length - 1]);
+      const floor = yMean * 0.1;
       const forecast = [];
       for (let i = 1; i <= 7; i++) {
         const dayX = lastX + i;
-        const predicted = Math.max(0, slope * dayX + intercept);
+        const predicted = Math.max(floor, slope * dayX + intercept);
         const d = new Date(lastDate);
         d.setDate(d.getDate() + i);
         forecast.push({ date: d.toISOString().slice(0, 10), predicted_spend: Math.round(predicted * 100) / 100 });

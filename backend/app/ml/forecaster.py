@@ -30,11 +30,12 @@ def weekly_spend_forecast(transactions: List[Dict]) -> Dict:
     slope = float(np.dot(X - x_mean, y - y_mean) / (np.dot(X - x_mean, X - x_mean) + 1e-8))
     intercept = float(y_mean - slope * x_mean)
 
+    floor = float(y.mean()) * 0.1
     last_x = (dates[-1] - base).days
     forecast = []
     for i in range(1, 8):
         day_x = last_x + i
-        predicted = max(0.0, slope * day_x + intercept)
+        predicted = max(floor, slope * day_x + intercept)
         forecast.append({
             'date': (dates[-1] + timedelta(days=i)).isoformat(),
             'predicted_spend': round(predicted, 2)
