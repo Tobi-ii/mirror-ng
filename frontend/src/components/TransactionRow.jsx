@@ -103,7 +103,7 @@ function groupSimilarTransactions(transactions) {
 }
 
 // Individual Transaction Component - now editable for all types (including aliased and credits)
-function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true }) {
+function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true, showCheckbox, selected, onToggleSelect }) {
   const [isEditing, setIsEditing] = useState(false);
   const [aliasName, setAliasName] = useState(tx?.narration || '');
   const [category, setCategory] = useState(tx?.category || 'General');
@@ -226,6 +226,14 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
       ) : (
         <>
           <div className="flex items-center gap-3 min-w-0 flex-1">
+            {showCheckbox && (
+              <button onClick={(e) => { e.stopPropagation(); onToggleSelect?.(); }}
+                className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-all ${
+                  selected ? 'bg-indigo-600 border-indigo-500' : 'border-white/20 hover:border-white/40'
+                }`}>
+                {selected && <Check size={10} className="text-white" />}
+              </button>
+            )}
             <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${theme.dot}`} />
 
             <div className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center ${
@@ -348,15 +356,27 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
   const [isSaving, setIsSaving] = useState(false);
   const [expanded, setExpanded] = useState(isExpanded);
   const [isAliased, setIsAliased] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   if (!group || !group.transactions) return null;
+
+  const toggleSelection = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const handleBatchAlias = async () => {
     if (!batchName.trim()) return;
     
+    const toAlias = group.transactions.filter(tx => selectedIds.has(tx.id));
+    if (toAlias.length === 0) return;
+    
     setIsSaving(true);
     try {
-      for (const tx of group.transactions) {
+      for (const tx of toAlias) {
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: batchName,
@@ -365,6 +385,7 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
       }
       setIsAliased(true);
       setIsBatchEditing(false);
+      setSelectedIds(new Set());
       if (onAliasUpdate) onAliasUpdate();
     } catch (error) {
       console.error('Failed to save batch alias:', error);
@@ -394,7 +415,7 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
           
           {!allAliased && !isBatchEditing && (
             <button
-              onClick={() => setIsBatchEditing(true)}
+              onClick={() => { setIsBatchEditing(true); setExpanded(true); }}
               className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors"
             >
               Alias All ({group.transactions.length})
@@ -407,7 +428,7 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
                 type="text"
                 value={batchName}
                 onChange={(e) => setBatchName(e.target.value)}
-                className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs w-32"
+                className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs w-24"
                 placeholder="Display name"
                 autoFocus
               />
@@ -420,15 +441,16 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
               </select>
+              <span className="text-[8px] text-slate-400">{selectedIds.size} selected</span>
               <button
                 onClick={handleBatchAlias}
-                disabled={isSaving}
-                className="p-1 bg-indigo-600 rounded-lg text-white hover:bg-indigo-700"
+                disabled={isSaving || selectedIds.size === 0}
+                className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors disabled:opacity-50"
               >
-                <Check size={12} />
+                Alias Selected ({selectedIds.size})
               </button>
               <button
-                onClick={() => setIsBatchEditing(false)}
+                onClick={() => { setIsBatchEditing(false); setSelectedIds(new Set()); }}
                 className="p-1 bg-white/5 rounded-lg text-slate-400 hover:bg-white/10"
               >
                 <X size={12} />
@@ -448,7 +470,10 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
               onAliasUpdate={onAliasUpdate}
               isAliased={allAliased || tx.aliased}
               index={idx}
-              showEditButton={true}
+              showEditButton={!isBatchEditing}
+              showCheckbox={isBatchEditing}
+              selected={selectedIds.has(tx.id)}
+              onToggleSelect={() => toggleSelection(tx.id)}
             />
           ))}
         </div>
