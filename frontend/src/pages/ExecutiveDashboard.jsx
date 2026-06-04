@@ -205,6 +205,7 @@ function TrendLine({ transactions }) {
   const points = dailyData.map((d, i) => `${px(i)},${py(d.amt)}`).join(' ');
   const area = [`${px(0)},${PAD.top + chartH}`, ...dailyData.map((d, i) => `${px(i)},${py(d.amt)}`), `${px(dailyData.length - 1)},${PAD.top + chartH}`].join(' ');
   const fmtDate = (s) => new Date(s).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
+  const hideLabels = dailyData.length > 15;
 
   return (
     <div className="relative">
@@ -215,7 +216,6 @@ function TrendLine({ transactions }) {
             <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
           </linearGradient>
         </defs>
-        {/* Axis lines */}
         {[0, 0.5, 1].map((t, i) => (
           <g key={i}>
             <line x1={PAD.left} y1={PAD.top + chartH * (1 - t)} x2={PAD.left + chartW} y2={PAD.top + chartH * (1 - t)} stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
@@ -227,15 +227,18 @@ function TrendLine({ transactions }) {
         {dailyData.map((d, i) => (
           <g key={i}>
             <circle cx={px(i)} cy={py(d.amt)} r={hoveredIdx === i ? 5 : 3} fill={hoveredIdx === i ? "#fff" : "#6366f1"} className="transition-all" />
-            <text x={px(i)} y={PAD.top + chartH + 16} textAnchor="middle" fill={hoveredIdx === i ? "#fff" : "#475569"} fontSize="7" fontWeight="700">{fmtDate(d.date)}</text>
+            {!hideLabels && (
+              <text x={px(i)} y={PAD.top + chartH + 16} textAnchor="middle" fill={hoveredIdx === i ? "#fff" : "#475569"} fontSize="7" fontWeight="700">{fmtDate(d.date)}</text>
+            )}
             <rect x={px(i)-10} y={0} width={20} height={H} fill="transparent" onMouseEnter={() => setHoveredIdx(i)} onMouseLeave={() => setHoveredIdx(null)} className="cursor-crosshair" />
           </g>
         ))}
       </svg>
       {hoveredIdx !== null && (
-        <div className="absolute pointer-events-none bg-white px-2 py-1 rounded text-[10px] font-black text-black -translate-x-1/2 -translate-y-full mb-2 z-10 shadow-xl"
+        <div className="absolute pointer-events-none bg-[#0a0c10] border border-white/10 px-2.5 py-1.5 rounded text-[10px] font-black text-white shadow-xl -translate-x-1/2 -translate-y-full mb-2 z-10 whitespace-nowrap"
           style={{ left: `${(px(hoveredIdx)/W)*100}%`, top: `${(py(dailyData[hoveredIdx].amt)/H)*100}%` }}>
-          {fmt(dailyData[hoveredIdx].amt)}
+          <div className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">{fmtDate(dailyData[hoveredIdx].date)}</div>
+          <div className="text-white">{fmt(dailyData[hoveredIdx].amt)}</div>
         </div>
       )}
     </div>
@@ -265,6 +268,7 @@ function CreditDebitBars({ transactions }) {
   const py = (v) => PAD.top + chartH - (v / maxVal) * chartH;
   const bh = (v) => (v / maxVal) * chartH;
   const fmtDate = (s) => new Date(s).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
+  const hideLabels = dailyData.length > 15;
 
   return (
     <div className="relative">
@@ -281,7 +285,9 @@ function CreditDebitBars({ transactions }) {
             <g key={i}>
               <rect x={cx - barW - 2} y={py(d.credit)} width={barW} height={bh(d.credit)} fill="#10b981" rx="1.5" opacity={hovered?.idx === i && hovered?.type === 'credit' ? 1 : 0.6} className="cursor-pointer transition-opacity" onMouseEnter={() => setHovered({idx: i, type: 'credit'})} onMouseLeave={() => setHovered(null)} />
               <rect x={cx + 2} y={py(d.debit)} width={barW} height={bh(d.debit)} fill="#f43f5e" rx="1.5" opacity={hovered?.idx === i && hovered?.type === 'debit' ? 1 : 0.6} className="cursor-pointer transition-opacity" onMouseEnter={() => setHovered({idx: i, type: 'debit'})} onMouseLeave={() => setHovered(null)} />
-              <text x={cx} y={PAD.top + chartH + 16} textAnchor="middle" fill={hovered?.idx === i ? "#fff" : "#475569"} fontSize="7" fontWeight="700">{fmtDate(d.date)}</text>
+              {!hideLabels && (
+                <text x={cx} y={PAD.top + chartH + 16} textAnchor="middle" fill={hovered?.idx === i ? "#fff" : "#475569"} fontSize="7" fontWeight="700">{fmtDate(d.date)}</text>
+              )}
             </g>
           );
         })}
@@ -293,12 +299,17 @@ function CreditDebitBars({ transactions }) {
         </g>
       </svg>
       {hovered && (
-        <div className="absolute pointer-events-none bg-white px-2 py-1 rounded text-[9px] font-black text-black shadow-xl -translate-x-1/2 -translate-y-full whitespace-nowrap z-10"
+        <div className="absolute pointer-events-none bg-[#0a0c10] border border-white/10 px-2.5 py-1.5 rounded text-[10px] font-black text-white shadow-xl -translate-x-1/2 -translate-y-full whitespace-nowrap z-10"
           style={{ 
             left: `${((PAD.left + hovered.idx * slotW + slotW/2 + (hovered.type === 'debit' ? barW : -barW)) / W) * 100}%`, 
             top: `${(py(dailyData[hovered.idx][hovered.type]) / H) * 100 - 2}%` 
           }}>
-          {fmt(dailyData[hovered.idx][hovered.type])}
+          <div className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">{fmtDate(dailyData[hovered.idx].date)}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: hovered.type === 'credit' ? '#10b981' : '#f43f5e' }} />
+            <span className={hovered.type === 'credit' ? 'text-emerald-400' : 'text-rose-400'}>{hovered.type.toUpperCase()}</span>
+            <span className="text-white">{fmt(dailyData[hovered.idx][hovered.type])}</span>
+          </div>
         </div>
       )}
     </div>
