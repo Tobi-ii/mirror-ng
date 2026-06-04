@@ -158,7 +158,7 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
       
       setIsAliased(true);
       setIsEditing(false);
-      if (onToggleSelect) onToggleSelect(tx.id);
+      if (onToggleSelect) onToggleSelect(index);
       if (onAliasUpdate) onAliasUpdate();
     } catch (error) {
       console.error('Failed to save alias:', error);
@@ -298,7 +298,7 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
             {/* Pencil toggle for selection */}
             {canEdit && (
               <button
-                onClick={() => onToggleSelect(tx.id)}
+                onClick={() => onToggleSelect(index)}
                 className={`p-1.5 rounded-lg transition-all ${selected ? 'bg-indigo-500/20' : 'opacity-0 group-hover:opacity-100 hover:bg-white/10'}`}
               >
                 <Pencil size={12} className={selected ? 'text-indigo-400' : 'text-slate-400'} />
@@ -350,7 +350,8 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
     if (!batchName.trim()) return;
     setIsSaving(true);
     try {
-      for (const tx of transactions.filter(t => selectedIds.has(t.id))) {
+      for (const [idx, tx] of transactions.entries()) {
+        if (!selectedIds.has(idx)) continue;
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: batchName,
@@ -430,16 +431,16 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
               isAliased={true}
               index={idx}
               showEditButton={true}
-              selected={selectedIds.has(tx.id)}
-              selectionCount={selectedIds.size}
-              onToggleSelect={toggleSelection}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+               selected={selectedIds.has(idx)}
+               selectionCount={selectedIds.size}
+               onToggleSelect={toggleSelection}
+             />
+           ))}
+         </div>
+       )}
+     </div>
+   );
+ }
 
 // Grouped Transaction Component with Batch Alias (for ML suggested groups)
 function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isExpanded, onToggle }) {
@@ -486,7 +487,8 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
     if (!batchName.trim()) return;
     setIsSaving(true);
     try {
-      for (const tx of group.transactions.filter(t => selectedIds.has(t.id))) {
+      for (const [idx, tx] of group.transactions.entries()) {
+        if (!selectedIds.has(idx)) continue;
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: batchName,
@@ -569,7 +571,7 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
               isAliased={allAliased || tx.aliased}
               index={idx}
               showEditButton={true}
-              selected={selectedIds.has(tx.id)}
+              selected={selectedIds.has(idx)}
               selectionCount={selectedIds.size}
               onToggleSelect={toggleSelection}
             />
@@ -630,7 +632,8 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
     const txs = flatSection === 'pending' ? pendingTransactions : creditTransactions;
     setFlatBatchSaving(true);
     try {
-      for (const tx of (flatBatchIds.size > 0 ? txs.filter(t => flatBatchIds.has(t.id)) : txs)) {
+      for (const [idx, tx] of txs.entries()) {
+        if (flatBatchIds.size > 0 && !flatBatchIds.has(idx)) continue;
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: flatBatchName,
@@ -822,7 +825,7 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   isAliased={false}
                   index={idx}
                   showEditButton={true}
-                  selected={flatBatchIds.has(tx.id) && flatSection === 'pending'}
+                   selected={flatBatchIds.has(idx) && flatSection === 'pending'}
                   selectionCount={flatBatchIds.size}
                   onToggleSelect={toggleFlatSelection('pending')}
                 />
@@ -885,7 +888,7 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   isAliased={false}
                   index={idx}
                   showEditButton={true}
-                  selected={flatBatchIds.has(tx.id) && flatSection === 'credits'}
+                   selected={flatBatchIds.has(idx) && flatSection === 'credits'}
                   selectionCount={flatBatchIds.size}
                   onToggleSelect={toggleFlatSelection('credits')}
                 />
