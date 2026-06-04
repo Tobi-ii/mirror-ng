@@ -44,6 +44,12 @@ function App() {
           return;
         }
         setUser(parsedUser);
+        setUserId(parsedUser.user_id);
+        const savedPass = localStorage.getItem('mirror_pass');
+        if (savedPass) {
+          setEmailPassword(savedPass);
+          setPassword(savedPass);
+        }
         setView('dashboard');
       } catch (e) {
         setView('landing');
@@ -65,6 +71,7 @@ function App() {
     if (password) {
       setEmailPassword(password);
       setPassword(password);
+      localStorage.setItem('mirror_pass', password);
     }
     // Fetch cloud sync preference
     try {
@@ -81,6 +88,9 @@ function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('mirror_user');
+    localStorage.removeItem('mirror_pass');
+    const userId = user?.user_id;
+    if (userId) localStorage.removeItem(`mirror_onboarded_${userId}`);
     setEmailPassword(null);
     clearPassword();
     setCloudSync(true);

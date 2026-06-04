@@ -100,9 +100,9 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
   const [aliases, setAliases] = useState([]);
   const [syncing, setSyncing] = useState(false);
   const [auditExpanded, setAuditExpanded] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem(`mirror_onboarded_${userId}`));
   const [showSettings, setShowSettings] = useState(false);
-  const [showGaps, setShowGaps] = useState(false); // Added for OnboardingGapsModal
+  const [showGaps, setShowGaps] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isBlurred, setIsBlurred] = useState(false);
   const [hoverLabel, setHoverLabel] = useState('');
@@ -120,6 +120,10 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, []);
+
+  useEffect(() => {
+    if (!showOnboarding) localStorage.setItem(`mirror_onboarded_${userId}`, 'true');
+  }, [showOnboarding, userId]);
 
   const [sinceDate, setSinceDate] = useState('2026-01-01');
   const [untilDate, setUntilDate] = useState(null);
@@ -405,7 +409,7 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
       >
         <DashboardHeader
           sinceDate={sinceDate} untilDate={untilDate}
-          onNewAudit={() => setShowOnboarding(true)}
+          onNewAudit={() => { localStorage.removeItem(`mirror_onboarded_${userId}`); setShowOnboarding(true); }}
           execMode={execMode}
           onToggleExec={() => setExecMode(prev => !prev)}
           onSync={handleSync}
