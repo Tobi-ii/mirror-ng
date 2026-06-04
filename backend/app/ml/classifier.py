@@ -11,7 +11,9 @@ TRAINING_DATA = [
     ("electricity", "Utilities"), ("dstv", "Utilities"), ("gotv", "Utilities"),
     ("netflix", "Entertainment"), ("spotify", "Entertainment"), ("showmax", "Entertainment"),
     ("transfer from", "Transfer"), ("transfer to", "Transfer"), ("onebank transfer", "Transfer"),
+    ("nip transfer", "Transfer"), ("alat nip transfer", "Transfer"),
     ("nip", "Transfer"), ("banknip", "Transfer"), ("afb nip", "Transfer"),
+    ("comm alat nip transfer", "Transfer"), ("vat alat nip transfer", "Transfer"),
     ("salary", "Income"), ("payroll", "Income"), ("wage", "Income"),
     ("uber", "Transport"), ("bolt", "Transport"), ("taxify", "Transport"), ("fuel", "Transport"),
     ("pos", "Shopping"), ("jumia", "Shopping"), ("konga", "Shopping"), ("market", "Shopping"),
@@ -27,8 +29,8 @@ def train_classifier():
     labels = [t[1] for t in TRAINING_DATA]
 
     pipeline = Pipeline([
-        ('tfidf', TfidfVectorizer(analyzer='char_wb', ngram_range=(2, 4), max_features=1000)),
-        ('clf', LogisticRegression(max_iter=500))
+        ('tfidf', TfidfVectorizer(analyzer='word', ngram_range=(1, 2), max_features=2000)),
+        ('clf', LogisticRegression(max_iter=500, class_weight='balanced'))
     ])
     pipeline.fit(texts, labels)
 

@@ -3,6 +3,7 @@ import {
   LayoutDashboard, History, LogOut, Brain, MessageSquare, Settings as LucideSettings 
 } from 'lucide-react';
 import { api } from '../services/api';
+import { getMLSuggestion } from '../components/TransactionRow';
 
 import FloatingNavItem from "../components/FloatingNavItem";
 import BankCard from "../components/BankCard";
@@ -147,19 +148,25 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
 
   // ── Alias application with original narration preservation ───────────
   const applyAliases = (txList) => {
-    if (!aliases.length) return txList;
     return txList.map(tx => {
-      const match = aliases.find(a =>
+      const match = aliases.length > 0 ? aliases.find(a =>
         tx.narration?.toLowerCase().includes(a.recipient_pattern.toLowerCase())
-      );
-      if (!match) return tx;
-      return { 
-        ...tx, 
-        narration: match.display_name, 
-        category: match.category, 
-        aliased: true,
-        original_narration: tx.narration
-      };
+      ) : null;
+      if (match) {
+        return { 
+          ...tx, 
+          narration: match.display_name, 
+          category: match.category, 
+          aliased: true,
+          original_narration: tx.narration
+        };
+      }
+      // Apply frontend ML suggestion for display category (fixes misclassified backend categories)
+      const suggestion = getMLSuggestion(tx.narration || '');
+      if (suggestion) {
+        return { ...tx, category: suggestion.category };
+      }
+      return tx;
     });
   };
 
