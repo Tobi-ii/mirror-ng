@@ -103,12 +103,22 @@ function groupSimilarTransactions(transactions) {
 }
 
 // Individual Transaction Component - now editable for all types (including aliased and credits)
-function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true, onEditingChange }) {
+function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true, selected, selectionCount, onToggleSelect }) {
   const [isEditing, setIsEditing] = useState(false);
   const [aliasName, setAliasName] = useState(tx?.narration || '');
   const [category, setCategory] = useState(tx?.category || 'General');
   const [isSaving, setIsSaving] = useState(false);
   const [isAliased, setIsAliased] = useState(initialIsAliased);
+
+  useEffect(() => {
+    if (selected && selectionCount === 1 && !isEditing) {
+      setIsEditing(true);
+      setAliasName(tx.narration || '');
+      setCategory(tx.category || 'General');
+    } else if ((!selected || selectionCount >= 2) && isEditing) {
+      setIsEditing(false);
+    }
+  }, [selected, selectionCount]);
   
   if (!tx) return null;
   
@@ -148,7 +158,7 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
       
       setIsAliased(true);
       setIsEditing(false);
-      if (onEditingChange) onEditingChange(tx.id, false);
+      if (onToggleSelect) onToggleSelect(tx.id);
       if (onAliasUpdate) onAliasUpdate();
     } catch (error) {
       console.error('Failed to save alias:', error);
@@ -169,15 +179,15 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
     setIsEditing(false);
     setAliasName(tx.narration || '');
     setCategory(tx.category || 'General');
-    if (onEditingChange) onEditingChange(tx.id, false);
+    if (onToggleSelect) onToggleSelect(tx.id);
   };
 
-  // Always show edit button if showEditButton is true (now for credits too)
   const canEdit = showEditButton && (isCredit || !isAliased || isAliased);
+  const isBatchSelected = selected && selectionCount >= 2;
 
   return (
     <div
-      className={`flex items-center justify-between px-5 py-5 border-l-2 ${theme.border} ${theme.bg} rounded-r-2xl transition-all group mb-1.5 hover:bg-opacity-30`}
+      className={`flex items-center justify-between px-5 py-5 border-l-2 ${isBatchSelected ? 'border-l-indigo-500' : theme.border} ${theme.bg} ${isBatchSelected ? 'bg-indigo-500/10' : ''} rounded-r-2xl transition-all group mb-1.5 hover:bg-opacity-30`}
       style={{ animationDelay: `${(index || 0) * 30}ms` }}
     >
       {isEditing ? (
@@ -228,7 +238,7 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
       ) : (
         <>
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${theme.dot}`} />
+            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isBatchSelected ? 'bg-indigo-400' : theme.dot}`} />
 
             <div className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center ${
               isCredit ? theme.creditIcon : theme.debitIcon
@@ -238,12 +248,17 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
 
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <p className={`text-xs font-bold truncate ${isAliased ? 'text-indigo-300' : 'text-white'}`}>
+                <p className={`text-xs font-bold truncate ${isAliased ? 'text-indigo-300' : isBatchSelected ? 'text-indigo-200' : 'text-white'}`}>
                   {tx.narration}
                 </p>
                 {isAliased && (
                   <span className="text-[7px] px-1 py-0.5 bg-indigo-500/20 text-indigo-400 rounded-full font-black uppercase">
                     aliased
+                  </span>
+                )}
+                {isBatchSelected && (
+                  <span className="text-[7px] px-1 py-0.5 bg-indigo-500/30 text-indigo-300 rounded-full font-black uppercase">
+                    selected
                   </span>
                 )}
                 {mlSuggestion && !isAliased && !isEditing && showEditButton && (
@@ -280,18 +295,13 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
               </p>
             </div>
             
-            {/* Edit button for individual editing */}
+            {/* Pencil toggle for selection */}
             {canEdit && (
               <button
-                onClick={() => {
-                  setIsEditing(true);
-                  setAliasName(tx.narration);
-                  setCategory(tx.category || 'General');
-                  if (onEditingChange) onEditingChange(tx.id, true);
-                }}
-                className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-white/10 rounded-lg transition-all"
+                onClick={() => onToggleSelect(tx.id)}
+                className={`p-1.5 rounded-lg transition-all ${selected ? 'bg-indigo-500/20' : 'opacity-0 group-hover:opacity-100 hover:bg-white/10'}`}
               >
-                <Pencil size={12} className="text-slate-400" />
+                <Pencil size={12} className={selected ? 'text-indigo-400' : 'text-slate-400'} />
               </button>
             )}
           </div>
@@ -309,6 +319,14 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
   const [batchName, setBatchName] = useState(category);
   const [batchCategory, setBatchCategory] = useState(category);
   const [isSaving, setIsSaving] = useState(false);
+
+  const toggleSelection = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const handleAliasAll = async () => {
     setIsSaving(true);
@@ -347,14 +365,6 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleEditingChange = (id, editing) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (editing) next.add(id); else next.delete(id);
-      return next;
-    });
   };
 
   const toggleExpand = () => {
@@ -420,7 +430,9 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
               isAliased={true}
               index={idx}
               showEditButton={true}
-              onEditingChange={handleEditingChange}
+              selected={selectedIds.has(tx.id)}
+              selectionCount={selectedIds.size}
+              onToggleSelect={toggleSelection}
             />
           ))}
         </div>
@@ -441,10 +453,10 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
 
   if (!group || !group.transactions) return null;
 
-  const handleEditingChange = (id, editing) => {
+  const toggleSelection = (id) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (editing) next.add(id); else next.delete(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
@@ -557,7 +569,9 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
               isAliased={allAliased || tx.aliased}
               index={idx}
               showEditButton={true}
-              onEditingChange={handleEditingChange}
+              selected={selectedIds.has(tx.id)}
+              selectionCount={selectedIds.size}
+              onToggleSelect={toggleSelection}
             />
           ))}
         </div>
@@ -589,11 +603,11 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
   const [flatShowForm, setFlatShowForm] = useState(false);
   const [flatSection, setFlatSection] = useState(null); // 'pending' or 'credits'
 
-  const handleFlatEditingChange = (section) => (id, editing) => {
+  const toggleFlatSelection = (section) => (id) => {
     setFlatSection(section);
     setFlatBatchIds(prev => {
       const next = new Set(prev);
-      if (editing) next.add(id); else next.delete(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
@@ -808,7 +822,9 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   isAliased={false}
                   index={idx}
                   showEditButton={true}
-                  onEditingChange={handleFlatEditingChange('pending')}
+                  selected={flatBatchIds.has(tx.id) && flatSection === 'pending'}
+                  selectionCount={flatBatchIds.size}
+                  onToggleSelect={toggleFlatSelection('pending')}
                 />
               ))}
             </div>
@@ -869,7 +885,9 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   isAliased={false}
                   index={idx}
                   showEditButton={true}
-                  onEditingChange={handleFlatEditingChange('credits')}
+                  selected={flatBatchIds.has(tx.id) && flatSection === 'credits'}
+                  selectionCount={flatBatchIds.size}
+                  onToggleSelect={toggleFlatSelection('credits')}
                 />
               ))}
             </div>
