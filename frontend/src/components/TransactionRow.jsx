@@ -103,7 +103,7 @@ function groupSimilarTransactions(transactions) {
 }
 
 // Individual Transaction Component - now editable for all types (including aliased and credits)
-function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true, showCheckbox, selected, onToggleSelect }) {
+function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true, selected, onToggleSelect }) {
   const [isEditing, setIsEditing] = useState(false);
   const [aliasName, setAliasName] = useState(tx?.narration || '');
   const [category, setCategory] = useState(tx?.category || 'General');
@@ -226,14 +226,6 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
       ) : (
         <>
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            {showCheckbox && (
-              <button onClick={(e) => { e.stopPropagation(); onToggleSelect?.(); }}
-                className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-all ${
-                  selected ? 'bg-indigo-600 border-indigo-500' : 'border-white/20 hover:border-white/40'
-                }`}>
-                {selected && <Check size={10} className="text-white" />}
-              </button>
-            )}
             <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${theme.dot}`} />
 
             <div className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center ${
@@ -286,8 +278,13 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
               </p>
             </div>
             
-            {/* Show edit button for all transactions (including credits and aliased) */}
-            {canEdit && (
+            {/* Select toggle or edit button */}
+            {onToggleSelect ? (
+              <button onClick={onToggleSelect}
+                className={`p-1.5 rounded-lg transition-all ${selected ? 'bg-indigo-500/20' : 'opacity-0 group-hover:opacity-100 hover:bg-white/10'}`}>
+                {selected ? <Check size={12} className="text-indigo-400" /> : <Pencil size={12} className="text-slate-400" />}
+              </button>
+            ) : canEdit && (
               <button
                 onClick={() => {
                   setIsEditing(true);
@@ -309,11 +306,11 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
 // Category Group for Aliased Transactions
 function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, isExpanded, onToggle }) {
   const [expanded, setExpanded] = useState(isExpanded);
-  const [isBatchEditing, setIsBatchEditing] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showForm, setShowForm] = useState(false);
   const [batchName, setBatchName] = useState(category);
   const [batchCategory, setBatchCategory] = useState(category);
   const [isSaving, setIsSaving] = useState(false);
-  const [selectedIds, setSelectedIds] = useState(new Set());
 
   const toggleSelection = (id) => {
     setSelectedIds(prev => {
@@ -323,25 +320,40 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
     });
   };
 
-  const handleBatchAlias = async () => {
-    if (!batchName.trim()) return;
-    const toAlias = transactions.filter(tx => selectedIds.has(tx.id));
-    if (toAlias.length === 0) return;
-    
+  const handleAliasAll = async () => {
     setIsSaving(true);
     try {
-      for (const tx of toAlias) {
+      for (const tx of transactions) {
+        await api.saveAlias(userId, {
+          recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
+          display_name: category,
+          category
+        });
+      }
+      if (onAliasUpdate) onAliasUpdate();
+    } catch (error) {
+      console.error('Failed to alias all:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAliasSelected = async () => {
+    if (!batchName.trim()) return;
+    setIsSaving(true);
+    try {
+      for (const tx of transactions.filter(t => selectedIds.has(t.id))) {
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: batchName,
           category: batchCategory
         });
       }
-      setIsBatchEditing(false);
+      setShowForm(false);
       setSelectedIds(new Set());
       if (onAliasUpdate) onAliasUpdate();
     } catch (error) {
-      console.error('Failed to batch alias:', error);
+      console.error('Failed to alias selected:', error);
     } finally {
       setIsSaving(false);
     }
@@ -358,42 +370,34 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
   return (
     <div className="mb-4 border border-white/5 rounded-xl overflow-hidden">
       <div className={`px-4 py-2 ${bgColor.replace('bg-', 'bg-opacity-20 bg-') || 'bg-white/5'}`}>
-        <div className="flex items-center justify-between">
-          <button onClick={toggleExpand} className="flex items-center gap-2 flex-1">
-            {expanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
-            <FolderOpen size={14} className={catColor} />
-            <span className={`text-xs font-black uppercase tracking-wider ${catColor}`}>{category}</span>
-            <span className="text-[8px] px-1.5 py-0.5 bg-white/10 rounded-full">{transactions.length} transactions</span>
+        <div className="flex items-center justify-between gap-2">
+          <button onClick={toggleExpand} className="flex items-center gap-2 flex-1 min-w-0">
+            {expanded ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
+            <FolderOpen size={14} className={`${catColor} shrink-0`} />
+            <span className={`text-xs font-black uppercase tracking-wider ${catColor} truncate`}>{category}</span>
+            <span className="text-[8px] px-1.5 py-0.5 bg-white/10 rounded-full shrink-0">{transactions.length} transactions</span>
           </button>
           
-          {!isBatchEditing && (
-            <button onClick={() => { setIsBatchEditing(true); setExpanded(true); }}
-              className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors"
+          <div className="flex items-center gap-1.5 shrink-0">
+            {selectedIds.size > 0 && (
+              <button onClick={() => setShowForm(true)} disabled={isSaving}
+                className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >
+                Alias Selected ({selectedIds.size})
+              </button>
+            )}
+            <button onClick={handleAliasAll} disabled={isSaving}
+              className="text-[8px] px-2 py-1 bg-indigo-600/60 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-600 transition-colors disabled:opacity-50"
             >
               Alias All ({transactions.length})
             </button>
-          )}
-          
-          {isBatchEditing && (
-            <div className="flex items-center gap-1.5">
-              <button onClick={handleBatchAlias} disabled={isSaving || selectedIds.size === 0}
-                className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider transition-colors disabled:opacity-50"
-              >
-                {selectedIds.size === 0 ? 'Select transactions' : `Alias Selected (${selectedIds.size})`}
-              </button>
-              <button onClick={() => { setIsBatchEditing(false); setSelectedIds(new Set()); }}
-                className="p-1 bg-white/5 rounded-lg text-slate-400 hover:bg-white/10"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          )}
+          </div>
         </div>
       </div>
       
       {expanded && (
         <div className="p-2 space-y-1">
-          {isBatchEditing && (
+          {showForm && (
             <div className="flex items-center gap-2 mb-2 px-1">
               <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)}
                 className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs w-32 flex-1 min-w-0"
@@ -403,7 +407,10 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
               >
                 {CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
               </select>
-              <span className="text-[8px] text-slate-400 whitespace-nowrap">{selectedIds.size} / {transactions.length}</span>
+              <button onClick={handleAliasSelected} disabled={isSaving}
+                className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider transition-colors disabled:opacity-50">Save</button>
+              <button onClick={() => { setShowForm(false); setSelectedIds(new Set()); }}
+                className="p-1 bg-white/5 rounded-lg text-slate-400 hover:bg-white/10"><X size={12} /></button>
             </div>
           )}
           {transactions.map((tx, idx) => (
@@ -414,8 +421,7 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
               onAliasUpdate={onAliasUpdate}
               isAliased={true}
               index={idx}
-              showEditButton={!isBatchEditing}
-              showCheckbox={isBatchEditing}
+              showEditButton={true}
               selected={selectedIds.has(tx.id)}
               onToggleSelect={() => toggleSelection(tx.id)}
             />
@@ -428,13 +434,13 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
 
 // Grouped Transaction Component with Batch Alias (for ML suggested groups)
 function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isExpanded, onToggle }) {
-  const [isBatchEditing, setIsBatchEditing] = useState(false);
   const [batchName, setBatchName] = useState(group?.display_name || '');
   const [batchCategory, setBatchCategory] = useState(group?.category || 'General');
   const [isSaving, setIsSaving] = useState(false);
   const [expanded, setExpanded] = useState(isExpanded);
   const [isAliased, setIsAliased] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showForm, setShowForm] = useState(false);
 
   if (!group || !group.transactions) return null;
 
@@ -446,15 +452,32 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
     });
   };
 
-  const handleBatchAlias = async () => {
-    if (!batchName.trim()) return;
-    
-    const toAlias = group.transactions.filter(tx => selectedIds.has(tx.id));
-    if (toAlias.length === 0) return;
-    
+  const handleAliasAll = async () => {
+    const name = group.display_name || groupName;
+    if (!name.trim()) return;
     setIsSaving(true);
     try {
-      for (const tx of toAlias) {
+      for (const tx of group.transactions) {
+        await api.saveAlias(userId, {
+          recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
+          display_name: name,
+          category: group.category || 'General'
+        });
+      }
+      setIsAliased(true);
+      if (onAliasUpdate) onAliasUpdate();
+    } catch (error) {
+      console.error('Failed to alias all:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAliasSelected = async () => {
+    if (!batchName.trim()) return;
+    setIsSaving(true);
+    try {
+      for (const tx of group.transactions.filter(t => selectedIds.has(t.id))) {
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: batchName,
@@ -462,11 +485,11 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
         });
       }
       setIsAliased(true);
-      setIsBatchEditing(false);
+      setShowForm(false);
       setSelectedIds(new Set());
       if (onAliasUpdate) onAliasUpdate();
     } catch (error) {
-      console.error('Failed to save batch alias:', error);
+      console.error('Failed to alias selected:', error);
     } finally {
       setIsSaving(false);
     }
@@ -482,38 +505,28 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
   return (
     <div className="mb-4 border border-white/5 rounded-xl overflow-hidden">
       <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 px-4 py-2">
-        <div className="flex items-center justify-between">
-          <button onClick={toggleExpand} className="flex items-center gap-2 flex-1">
-            {expanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
-            <Layers size={14} className="text-indigo-400" />
-            <span className="text-xs font-black uppercase tracking-wider text-white">{groupName}</span>
-            <span className="text-[8px] px-1.5 py-0.5 bg-white/10 rounded-full">{group.transactions.length} transactions</span>
-            {allAliased && <Check size={10} className="text-emerald-400" />}
+        <div className="flex items-center justify-between gap-2">
+          <button onClick={toggleExpand} className="flex items-center gap-2 flex-1 min-w-0">
+            {expanded ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
+            <Layers size={14} className="text-indigo-400 shrink-0" />
+            <span className="text-xs font-black uppercase tracking-wider text-white truncate">{groupName}</span>
+            <span className="text-[8px] px-1.5 py-0.5 bg-white/10 rounded-full shrink-0">{group.transactions.length} transactions</span>
+            {allAliased && <Check size={10} className="text-emerald-400 shrink-0" />}
           </button>
           
-          {!allAliased && !isBatchEditing && (
-            <button
-              onClick={() => { setIsBatchEditing(true); setExpanded(true); }}
-              className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors"
-            >
-              Alias All ({group.transactions.length})
-            </button>
-          )}
-          
-          {isBatchEditing && (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={handleBatchAlias}
-                disabled={isSaving || selectedIds.size === 0}
-                className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors disabled:opacity-50"
+          {!allAliased && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              {selectedIds.size > 0 && (
+                <button onClick={() => setShowForm(true)} disabled={isSaving}
+                  className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                >
+                  Alias Selected ({selectedIds.size})
+                </button>
+              )}
+              <button onClick={handleAliasAll} disabled={isSaving}
+                className="text-[8px] px-2 py-1 bg-indigo-600/60 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-600 transition-colors disabled:opacity-50"
               >
-                {selectedIds.size === 0 ? 'Select transactions' : `Alias Selected (${selectedIds.size})`}
-              </button>
-              <button
-                onClick={() => { setIsBatchEditing(false); setSelectedIds(new Set()); }}
-                className="p-1 bg-white/5 rounded-lg text-slate-400 hover:bg-white/10"
-              >
-                <X size={12} />
+                Alias All ({group.transactions.length})
               </button>
             </div>
           )}
@@ -522,26 +535,20 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
       
       {expanded && (
         <div className="p-2 space-y-1">
-          {isBatchEditing && (
+          {showForm && (
             <div className="flex items-center gap-2 mb-2 px-1">
-              <input
-                type="text"
-                value={batchName}
-                onChange={(e) => setBatchName(e.target.value)}
+              <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)}
                 className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs w-32 flex-1 min-w-0"
-                placeholder="Display name"
-                autoFocus
-              />
-              <select
-                value={batchCategory}
-                onChange={(e) => setBatchCategory(e.target.value)}
+                placeholder="Display name" autoFocus />
+              <select value={batchCategory} onChange={(e) => setBatchCategory(e.target.value)}
                 className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs"
               >
-                {CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
+                {CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
               </select>
-              <span className="text-[8px] text-slate-400 whitespace-nowrap">{selectedIds.size} / {group.transactions.length}</span>
+              <button onClick={handleAliasSelected} disabled={isSaving}
+                className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider transition-colors disabled:opacity-50">Save</button>
+              <button onClick={() => { setShowForm(false); setSelectedIds(new Set()); }}
+                className="p-1 bg-white/5 rounded-lg text-slate-400 hover:bg-white/10"><X size={12} /></button>
             </div>
           )}
           {group.transactions.map((tx, idx) => (
@@ -552,8 +559,7 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
               onAliasUpdate={onAliasUpdate}
               isAliased={allAliased || tx.aliased}
               index={idx}
-              showEditButton={!isBatchEditing}
-              showCheckbox={isBatchEditing}
+              showEditButton={true}
               selected={selectedIds.has(tx.id)}
               onToggleSelect={() => toggleSelection(tx.id)}
             />
@@ -580,12 +586,12 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
   const [creditTransactions, setCreditTransactions] = useState([]);
   const [mlGroups, setMlGroups] = useState({ groups: {}, ungrouped: [] });
   
-  const [isPendingBatch, setIsPendingBatch] = useState(false);
-  const [isCreditBatch, setIsCreditBatch] = useState(false);
   const [flatBatchIds, setFlatBatchIds] = useState(new Set());
   const [flatBatchName, setFlatBatchName] = useState('');
   const [flatBatchCategory, setFlatBatchCategory] = useState('General');
   const [flatBatchSaving, setFlatBatchSaving] = useState(false);
+  const [flatShowForm, setFlatShowForm] = useState(false);
+  const [flatSection, setFlatSection] = useState(null); // 'pending' or 'credits'
 
   const toggleFlatSelection = (id) => {
     setFlatBatchIds(prev => {
@@ -595,20 +601,32 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
     });
   };
 
-  const handleFlatBatchAlias = async () => {
-    if (!flatBatchName.trim()) return;
+  const handleFlatAliasAll = async (section) => {
+    const txs = section === 'pending' ? pendingTransactions : creditTransactions;
     setFlatBatchSaving(true);
     try {
-      const all = isPendingBatch ? pendingTransactions : creditTransactions;
-      for (const tx of all.filter(t => flatBatchIds.has(t.id))) {
+      setFlatSection(section);
+      setFlatBatchName('');
+      setFlatBatchCategory('General');
+      setFlatShowForm(true);
+    } finally {
+      setFlatBatchSaving(false);
+    }
+  };
+
+  const handleFlatAliasSubmit = async () => {
+    if (!flatBatchName.trim()) return;
+    const txs = flatSection === 'pending' ? pendingTransactions : creditTransactions;
+    setFlatBatchSaving(true);
+    try {
+      for (const tx of (flatBatchIds.size > 0 ? txs.filter(t => flatBatchIds.has(t.id)) : txs)) {
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: flatBatchName,
           category: flatBatchCategory
         });
       }
-      setIsPendingBatch(false);
-      setIsCreditBatch(false);
+      setFlatShowForm(false);
       setFlatBatchIds(new Set());
       if (onAliasUpdate) onAliasUpdate();
     } catch (error) {
@@ -619,9 +637,9 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
   };
 
   const cancelFlatBatch = () => {
-    setIsPendingBatch(false);
-    setIsCreditBatch(false);
+    setFlatShowForm(false);
     setFlatBatchIds(new Set());
+    setFlatSection(null);
   };
 
   useEffect(() => {
@@ -750,30 +768,25 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
               <span className="text-[10px] font-black uppercase tracking-wider text-white">Other Transactions</span>
               <span className="text-[8px] px-1.5 py-0.5 bg-white/10 rounded-full">{pendingTransactions.length}</span>
             </button>
-            {!isPendingBatch && (
-              <button onClick={() => { setIsPendingBatch(true); setExpandedGroups(p => ({ ...p, pending: true })); }}
-                className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors"
+            <div className="flex items-center gap-1.5 shrink-0">
+              {flatBatchIds.size > 0 && flatSection === 'pending' && (
+                <button onClick={() => setFlatShowForm(true)}
+                  className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors"
+                >
+                  Alias Selected ({flatBatchIds.size})
+                </button>
+              )}
+              <button onClick={() => handleFlatAliasAll('pending')}
+                className="text-[8px] px-2 py-1 bg-indigo-600/60 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-600 transition-colors"
               >
                 Alias All ({pendingTransactions.length})
               </button>
-            )}
-            {isPendingBatch && (
-              <div className="flex items-center gap-1.5">
-                <button onClick={handleFlatBatchAlias} disabled={flatBatchSaving || flatBatchIds.size === 0}
-                  className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider transition-colors disabled:opacity-50"
-                >
-                  {flatBatchIds.size === 0 ? 'Select transactions' : `Alias Selected (${flatBatchIds.size})`}
-                </button>
-                <button onClick={cancelFlatBatch} className="p-1 bg-white/5 rounded-lg text-slate-400 hover:bg-white/10">
-                  <X size={12} />
-                </button>
-              </div>
-            )}
+            </div>
           </div>
           
           {expandedGroups.pending && (
             <div className="mt-2 space-y-1 pl-4">
-              {isPendingBatch && (
+              {flatShowForm && flatSection === 'pending' && (
                 <div className="flex items-center gap-2 mb-2 px-1">
                   <input type="text" value={flatBatchName} onChange={(e) => setFlatBatchName(e.target.value)}
                     className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs w-32 flex-1 min-w-0"
@@ -783,7 +796,10 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   >
                     {CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
                   </select>
-                  <span className="text-[8px] text-slate-400 whitespace-nowrap">{flatBatchIds.size} / {pendingTransactions.length}</span>
+                  <button onClick={handleFlatAliasSubmit} disabled={flatBatchSaving || !flatBatchName.trim()}
+                    className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider transition-colors disabled:opacity-50">Save</button>
+                  <button onClick={cancelFlatBatch}
+                    className="p-1 bg-white/5 rounded-lg text-slate-400 hover:bg-white/10"><X size={12} /></button>
                 </div>
               )}
               {pendingTransactions.map((tx, idx) => (
@@ -794,10 +810,9 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   onAliasUpdate={onAliasUpdate}
                   isAliased={false}
                   index={idx}
-                  showEditButton={!isPendingBatch}
-                  showCheckbox={isPendingBatch}
-                  selected={flatBatchIds.has(tx.id)}
-                  onToggleSelect={() => toggleFlatSelection(tx.id)}
+                  showEditButton={true}
+                  selected={flatBatchIds.has(tx.id) && flatSection === 'pending'}
+                  onToggleSelect={() => { setFlatSection('pending'); toggleFlatSelection(tx.id); }}
                 />
               ))}
             </div>
@@ -815,30 +830,25 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
               <span className="text-[10px] font-black uppercase tracking-wider text-white">Income / Credits</span>
               <span className="text-[8px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full">{creditTransactions.length}</span>
             </button>
-            {!isCreditBatch && (
-              <button onClick={() => { setIsCreditBatch(true); setExpandedGroups(p => ({ ...p, credits: true })); }}
-                className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors"
+            <div className="flex items-center gap-1.5 shrink-0">
+              {flatBatchIds.size > 0 && flatSection === 'credits' && (
+                <button onClick={() => setFlatShowForm(true)}
+                  className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors"
+                >
+                  Alias Selected ({flatBatchIds.size})
+                </button>
+              )}
+              <button onClick={() => handleFlatAliasAll('credits')}
+                className="text-[8px] px-2 py-1 bg-indigo-600/60 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-600 transition-colors"
               >
                 Alias All ({creditTransactions.length})
               </button>
-            )}
-            {isCreditBatch && (
-              <div className="flex items-center gap-1.5">
-                <button onClick={handleFlatBatchAlias} disabled={flatBatchSaving || flatBatchIds.size === 0}
-                  className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider transition-colors disabled:opacity-50"
-                >
-                  {flatBatchIds.size === 0 ? 'Select transactions' : `Alias Selected (${flatBatchIds.size})`}
-                </button>
-                <button onClick={cancelFlatBatch} className="p-1 bg-white/5 rounded-lg text-slate-400 hover:bg-white/10">
-                  <X size={12} />
-                </button>
-              </div>
-            )}
+            </div>
           </div>
           
           {expandedGroups.credits && (
             <div className="mt-2 space-y-1 pl-4">
-              {isCreditBatch && (
+              {flatShowForm && flatSection === 'credits' && (
                 <div className="flex items-center gap-2 mb-2 px-1">
                   <input type="text" value={flatBatchName} onChange={(e) => setFlatBatchName(e.target.value)}
                     className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs w-32 flex-1 min-w-0"
@@ -848,7 +858,10 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   >
                     {CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
                   </select>
-                  <span className="text-[8px] text-slate-400 whitespace-nowrap">{flatBatchIds.size} / {creditTransactions.length}</span>
+                  <button onClick={handleFlatAliasSubmit} disabled={flatBatchSaving || !flatBatchName.trim()}
+                    className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider transition-colors disabled:opacity-50">Save</button>
+                  <button onClick={cancelFlatBatch}
+                    className="p-1 bg-white/5 rounded-lg text-slate-400 hover:bg-white/10"><X size={12} /></button>
                 </div>
               )}
               {creditTransactions.map((tx, idx) => (
@@ -859,10 +872,9 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   onAliasUpdate={onAliasUpdate}
                   isAliased={false}
                   index={idx}
-                  showEditButton={!isCreditBatch}
-                  showCheckbox={isCreditBatch}
-                  selected={flatBatchIds.has(tx.id)}
-                  onToggleSelect={() => toggleFlatSelection(tx.id)}
+                  showEditButton={true}
+                  selected={flatBatchIds.has(tx.id) && flatSection === 'credits'}
+                  onToggleSelect={() => { setFlatSection('credits'); toggleFlatSelection(tx.id); }}
                 />
               ))}
             </div>
