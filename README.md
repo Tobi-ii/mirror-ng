@@ -143,7 +143,7 @@ mirror-ng/
 
 ## Live URL
 
-The official instance runs at **[mirror.ng](https://mirror.ng)** — no setup required, just visit and connect your email.
+The official instance runs at **[mirror.ng](https://mirror-ng.fly.dev/)** — no setup required, just visit and connect your email.
 
 ## Self-Host
 
