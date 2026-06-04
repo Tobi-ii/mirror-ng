@@ -226,6 +226,14 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
       ) : (
         <>
           <div className="flex items-center gap-3 min-w-0 flex-1">
+            {onToggleSelect && (
+              <button onClick={onToggleSelect}
+                className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${
+                  selected ? 'bg-indigo-600 border-indigo-500' : 'border-white/20 hover:border-white/40'
+                }`}>
+                {selected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+              </button>
+            )}
             <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${theme.dot}`} />
 
             <div className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center ${
@@ -278,13 +286,8 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
               </p>
             </div>
             
-            {/* Select toggle or edit button */}
-            {onToggleSelect ? (
-              <button onClick={onToggleSelect}
-                className={`p-1.5 rounded-lg transition-all ${selected ? 'bg-indigo-500/20' : 'opacity-0 group-hover:opacity-100 hover:bg-white/10'}`}>
-                {selected ? <Check size={12} className="text-indigo-400" /> : <Pencil size={12} className="text-slate-400" />}
-              </button>
-            ) : canEdit && (
+            {/* Edit button for individual editing */}
+            {canEdit && (
               <button
                 onClick={() => {
                   setIsEditing(true);
