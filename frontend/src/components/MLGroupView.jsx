@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { ChevronLeft, Sparkles, CheckCircle2, ArrowDownLeft, Brain } from 'lucide-react';
+import { ChevronLeft, Sparkles, CheckCircle2, ArrowDownLeft, Brain, List, Layers } from 'lucide-react';
 import { groupSimilarTransactions } from './TransactionRow';
 import TransactionList from './TransactionRow';
 
@@ -27,6 +27,7 @@ const fmtK = (n) => n >= 1000 ? `₦${(n / 1000).toFixed(0)}K` : `₦${n.toFixed
 export default function MLGroupView({ transactions, userId, onAliasUpdate, onViewChange }) {
   const [view, setView] = useState('overview');
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [flatMode, setFlatMode] = useState(false);
 
   const isDetail = view === 'detail';
   const prevDetail = useRef(isDetail);
@@ -141,7 +142,34 @@ export default function MLGroupView({ transactions, userId, onAliasUpdate, onVie
     );
   }
 
-  // ── Level 1: Overview (3 cards) ──
+  // ── Flat Mode: show all transactions as a flat list ──
+  if (flatMode) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="flex items-center justify-end mb-4">
+          <div className="flex bg-white/5 rounded-full p-0.5 border border-white/5">
+            <button onClick={() => setFlatMode(false)}
+              className="text-[8px] font-black uppercase tracking-wider px-3 py-1 rounded-full transition-all flex items-center gap-1.5 text-slate-500 hover:text-white">
+              <Layers size={10} /> Grouped
+            </button>
+            <button onClick={() => setFlatMode(true)}
+              className="text-[8px] font-black uppercase tracking-wider px-3 py-1 rounded-full transition-all flex items-center gap-1.5 bg-white text-black">
+              <List size={10} /> Flat
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <TransactionList
+            transactions={transactions}
+            userId={userId}
+            onAliasUpdate={onAliasUpdate}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Overview (3 cards) ──
   if (noData) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -176,6 +204,23 @@ export default function MLGroupView({ transactions, userId, onAliasUpdate, onVie
           </span>
         </div>
       )}
+
+      <div className="flex items-center justify-end mb-4">
+        <div className="flex bg-white/5 rounded-full p-0.5 border border-white/5">
+          <button onClick={() => setFlatMode(false)}
+            className={`text-[8px] font-black uppercase tracking-wider px-3 py-1 rounded-full transition-all flex items-center gap-1.5 ${
+              !flatMode ? 'bg-white text-black' : 'text-slate-500 hover:text-white'
+            }`}>
+            <Layers size={10} /> Grouped
+          </button>
+          <button onClick={() => setFlatMode(true)}
+            className={`text-[8px] font-black uppercase tracking-wider px-3 py-1 rounded-full transition-all flex items-center gap-1.5 ${
+              flatMode ? 'bg-white text-black' : 'text-slate-500 hover:text-white'
+            }`}>
+            <List size={10} /> Flat
+          </button>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 flex-1">
         {/* ML Groups Card */}
