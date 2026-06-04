@@ -10,10 +10,8 @@ function App() {
   const [user, setUser] = useState(null);
   const [emailPassword, setEmailPassword] = useState(null);
 
-  const SESSION_VERSION = 3;
-
   useEffect(() => {
-    // Check URL hash fragment first (OAuth callback), then query params (fallback)
+    // Check URL hash fragment for OAuth callback (Google)
     const hash = window.location.hash.substring(1);
     const params = new URLSearchParams(hash || window.location.search.substring(1));
     const callbackToken = params.get('token');
@@ -24,54 +22,28 @@ function App() {
       const fullUser = {
         user_id: callbackUserId,
         email: callbackEmail,
-        token: callbackToken,
-        _sv: SESSION_VERSION
+        token: callbackToken
       };
       setUser(fullUser);
-      localStorage.setItem('mirror_user', JSON.stringify(fullUser));
       window.history.replaceState({}, document.title, window.location.pathname);
       setView('dashboard');
       return;
     }
 
-    const savedUser = localStorage.getItem('mirror_user');
-    if (savedUser) {
-      try {
-        const parsedUser = JSON.parse(savedUser);
-        if (parsedUser._sv !== SESSION_VERSION) {
-          localStorage.removeItem('mirror_user');
-          setView('landing');
-          return;
-        }
-        setUser(parsedUser);
-        setUserId(parsedUser.user_id);
-        const savedPass = localStorage.getItem('mirror_pass');
-        if (savedPass) {
-          setEmailPassword(savedPass);
-          setPassword(savedPass);
-        }
-        setView('dashboard');
-      } catch (e) {
-        setView('landing');
-      }
-    } else {
-      setView('landing');
-    }
+    // Always start fresh — no localStorage persistence
+    setView('landing');
   }, []);
 
   const handleLogin = async (userData, tokenData, password) => {
     const fullUser = { 
       ...userData, 
-      token: tokenData?.access_token,
-      _sv: SESSION_VERSION
+      token: tokenData?.access_token
     };
     setUser(fullUser);
-    localStorage.setItem('mirror_user', JSON.stringify(fullUser));
     setUserId(fullUser.user_id);
     if (password) {
       setEmailPassword(password);
       setPassword(password);
-      localStorage.setItem('mirror_pass', password);
     }
     // Fetch cloud sync preference
     try {
@@ -87,8 +59,6 @@ function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('mirror_user');
-    localStorage.removeItem('mirror_pass');
     const userId = user?.user_id;
     if (userId) localStorage.removeItem(`mirror_onboarded_${userId}`);
     setEmailPassword(null);
