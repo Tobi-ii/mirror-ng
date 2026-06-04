@@ -235,7 +235,79 @@ export const api = {
    * Financial insights and forecasting
    */
   getInsights: async (userId) => {
-    if (!_cloudSync) return { success: true, anomalies: [], forecast: [], message: "Local mode — insights available in Ask Mirror" };
+    if (!_cloudSync) {
+      const txs = await localData.getTransactions(userId);
+      if (txs.length < 2) return { success: true, anomalies: [], forecast: { forecast: [], trend: 'insufficient_data', daily_avg: 0, weekly_projection: 0 }, message: 'Insufficient data for insights' };
+
+      // Daily debit aggregation and linear regression forecast
+      const daily = {};
+      txs.forEach(tx => {
+        if (tx.tx_type !== 'debit') return;
+        const date = tx.timestamp?.slice(0, 10);
+        if (!date) return;
+        daily[date] = (daily[date] || 0) + Number(tx.amount);
+      });
+
+      const dates = Object.keys(daily).sort();
+      if (dates.length < 2) return { success: true, anomalies: [], forecast: { forecast: [], trend: 'insufficient_data', daily_avg: 0, weekly_projection: 0 } };
+
+      const base = new Date(dates[0]);
+      const X = dates.map(d => (new Date(d) - base) / 86400000);
+      const y = dates.map(d => daily[d]);
+      const xMean = X.reduce((a, b) => a + b, 0) / X.length;
+      const yMean = y.reduce((a, b) => a + b, 0) / y.length;
+      const num = X.reduce((s, x, i) => s + (x - xMean) * (y[i] - yMean), 0);
+      const den = X.reduce((s, x) => s + (x - xMean) ** 2, 0) + 1e-8;
+      const slope = num / den;
+      const intercept = yMean - slope * xMean;
+      const lastX = X[X.length - 1];
+      const lastDate = new Date(dates[dates.length - 1]);
+      const forecast = [];
+      for (let i = 1; i <= 7; i++) {
+        const dayX = lastX + i;
+        const predicted = Math.max(0, slope * dayX + intercept);
+        const d = new Date(lastDate);
+        d.setDate(d.getDate() + i);
+        forecast.push({ date: d.toISOString().slice(0, 10), predicted_spend: Math.round(predicted * 100) / 100 });
+      }
+
+      const forecastObj = {
+        forecast,
+        trend: slope > 100 ? 'increasing' : slope < -100 ? 'decreasing' : 'stable',
+        daily_avg: Math.round(yMean * 100) / 100,
+        weekly_projection: Math.round(forecast.reduce((s, f) => s + f.predicted_spend, 0) * 100) / 100,
+      };
+
+      // Z-score anomaly detection
+      const byCategory = {};
+      txs.forEach(tx => {
+        if (tx.tx_type !== 'debit') return;
+        const cat = tx.category || 'General';
+        if (!byCategory[cat]) byCategory[cat] = [];
+        byCategory[cat].push(Number(tx.amount));
+      });
+      const stats = {};
+      Object.keys(byCategory).forEach(cat => {
+        const amts = byCategory[cat];
+        if (amts.length < 2) return;
+        const mean = amts.reduce((a, b) => a + b, 0) / amts.length;
+        const std = Math.sqrt(amts.reduce((s, a) => s + (a - mean) ** 2, 0) / amts.length);
+        stats[cat] = { mean, std };
+      });
+      const anomalies = [];
+      txs.forEach(tx => {
+        if (tx.tx_type !== 'debit') return;
+        const cat = tx.category || 'General';
+        if (!stats[cat] || stats[cat].std === 0) return;
+        const amount = Number(tx.amount);
+        const z = Math.abs(amount - stats[cat].mean) / stats[cat].std;
+        if (z > 2.0) {
+          anomalies.push({ ...tx, is_anomaly: true, anomaly_reason: `Unusually high ${cat} spend — ₦${amount.toLocaleString('en-NG')} vs avg ₦${Math.round(stats[cat].mean).toLocaleString('en-NG')}` });
+        }
+      });
+
+      return { success: true, anomalies, forecast: forecastObj, stats: { total_anomalies: anomalies.length, total_analyzed: txs.length } };
+    }
     const res = await authFetch(`${API_BASE}/api/insights/${String(userId)}`);
     if (!res.ok) throw new Error('Failed to fetch insights');
     return res.json();

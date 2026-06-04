@@ -22,7 +22,9 @@ export default function InsightsPanel({ userId }) {
 
   if (!data) return <p className="text-slate-500 text-sm">No insight data available.</p>
 
-  const { forecast, anomalies } = data
+  const rawForecast = data.forecast || {}
+  const forecast = Array.isArray(rawForecast) ? { forecast: [], trend: 'stable', daily_avg: 0, weekly_projection: 0 } : rawForecast
+  const { anomalies } = data
   const TrendIcon = forecast.trend === 'increasing' ? TrendingUp : forecast.trend === 'decreasing' ? TrendingDown : Minus
   const trendColor = forecast.trend === 'increasing' ? 'text-rose-400' : forecast.trend === 'decreasing' ? 'text-emerald-400' : 'text-slate-400'
 
