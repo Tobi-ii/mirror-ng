@@ -54,9 +54,9 @@ const CATEGORY_COLORS = {
 
 // ML Pattern Groups for auto-suggestions
 const ML_GROUPS = [
-  { pattern: /airtime|mtn|glo|airtel|9mobile/i, name: 'Airtime Purchase', category: 'Data & Airtime' },
+  { pattern: /airtime|mtn|\bglo\b|airtel|9mobile/i, name: 'Airtime Purchase', category: 'Data & Airtime' },
   { pattern: /data purchase|data plan|internet/i, name: 'Data Purchase', category: 'Data & Airtime' },
-  { pattern: /transfer to|sent to|payment to|nip transfer/i, name: 'Bank Transfer', category: 'Transfer' },
+  { pattern: /transfer to|sent to|payment to|nip transfer|transfer from|onebank transfer|\bpos\b|\batm\b|withdrawal/i, name: 'Bank Transfer', category: 'Transfer' },
   { pattern: /ebill|electric|ikeja|eko disco|abuja disco/i, name: 'Electricity Bill', category: 'Utilities' },
   { pattern: /vat|value added tax/i, name: 'VAT Charge', category: 'Utilities' },
   { pattern: /card maintenance|card fee/i, name: 'Card Fee', category: 'Utilities' },

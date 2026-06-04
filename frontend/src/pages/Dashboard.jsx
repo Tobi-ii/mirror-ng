@@ -159,27 +159,29 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
 
   // ── Balance display logic ────────────────────────────────────────────
   // Deduplicate by (bank + last4) — accounts with different last4s are separate
+  // Normalize null/empty last4 to '0000' so OPay (parser sets null) and manual entries match
+  const normLast4 = (v) => (v || '0000');
   const dedupedBalances = [];
   const seenKeys = new Set();
   (balances || []).forEach(b => {
-    const key = `${b.bank}::${b.account_last4 || ''}`;
+    const key = `${b.bank}::${normLast4(b.account_last4)}`;
     if (!seenKeys.has(key)) {
       seenKeys.add(key);
       dedupedBalances.push(b);
     } else {
       // Replace existing if this one is non-anchor (auto-tracked) or has real last4
-      const idx = dedupedBalances.findIndex(x => `${x.bank}::${x.account_last4 || ''}` === key);
+      const idx = dedupedBalances.findIndex(x => `${x.bank}::${normLast4(x.account_last4)}` === key);
       const existing = dedupedBalances[idx];
-      if ((!b.is_anchor && existing.is_anchor) || (b.account_last4 !== '0000' && existing.account_last4 === '0000')) {
+      if ((!b.is_anchor && existing.is_anchor) || (normLast4(b.account_last4) !== '0000' && normLast4(existing.account_last4) === '0000')) {
         dedupedBalances[idx] = b;
       }
     }
   });
 
-  const syncedBanks = [...new Set(auditFilteredTransactions.map(t => `${t.bank}::${t.account_last4 || ''}`))].map(key => {
+  const syncedBanks = [...new Set(auditFilteredTransactions.map(t => `${t.bank}::${normLast4(t.account_last4)}`))].map(key => {
     const [bank, last4] = key.split('::');
-    const bankTxs = auditFilteredTransactions.filter(t => t.bank === bank && (t.account_last4 || '') === last4);
-    const existingBal = dedupedBalances.find(b => `${b.bank}::${b.account_last4 || ''}` === key);
+    const bankTxs = auditFilteredTransactions.filter(t => t.bank === bank && normLast4(t.account_last4) === last4);
+    const existingBal = dedupedBalances.find(b => `${b.bank}::${normLast4(b.account_last4)}` === key);
     const net = bankTxs.reduce((s, t) => t.tx_type === 'credit' ? s + t.amount : s - t.amount, 0);
     return {
       bank,
@@ -191,7 +193,7 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
   });
 
   const manualBanks = dedupedBalances
-    .filter(b => !syncedBanks.find(s => s.bank === b.bank && (s.account_last4 || '') === (b.account_last4 || '')))
+    .filter(b => !syncedBanks.find(s => s.bank === b.bank && normLast4(s.account_last4) === normLast4(b.account_last4)))
     .map(b => ({ ...b, isSynced: false }));
 
   const displayBalances = [...syncedBanks, ...manualBanks]

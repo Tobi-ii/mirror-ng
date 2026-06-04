@@ -9,6 +9,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
   const [loading, setLoading] = useState(true);
   const [editingBal, setEditingBal] = useState(null);
   const [editValue, setEditValue] = useState('');
+  const [editLast4, setEditLast4] = useState('');
   const [deletingAlias, setDeletingAlias] = useState(null);
   const [clearingAliases, setClearingAliases] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -27,20 +28,21 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
       let loadedBals = balRes?.success ? balRes.balances : [];
 
       // Add banks that have transactions but no balance record (anchor not set)
-      const balBankKeys = new Set(loadedBals.map(b => b.bank + '|' + (b.account_last4 || '')));
+      const normLast4 = (v) => (v || '0000');
+      const balBankKeys = new Set(loadedBals.map(b => b.bank + '|' + normLast4(b.account_last4)));
       const latestTxPerBank = {};
       (transactions || []).forEach(t => {
-        const key = t.bank;
+        const key = t.bank + '|' + normLast4(t.account_last4);
         if (!latestTxPerBank[key] || (t.timestamp || '') > (latestTxPerBank[key].timestamp || '')) {
           latestTxPerBank[key] = t;
         }
       });
       Object.values(latestTxPerBank).forEach(tx => {
-        const key = tx.bank + '|' + (tx.account_last4 || '');
+        const key = tx.bank + '|' + normLast4(tx.account_last4);
         if (!balBankKeys.has(key)) {
           loadedBals.push({
             bank: tx.bank,
-            account_last4: tx.account_last4 || '0000',
+            account_last4: normLast4(tx.account_last4),
             balance: 0,
             last_updated: tx.timestamp,
             is_anchor: false,
@@ -304,6 +306,12 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
                 <div className="flex items-center gap-2 sm:gap-3 ml-11 sm:ml-0">
                   {editingBal === i ? (
                     <div className="flex items-center gap-1.5 sm:gap-2">
+                      <input type="text" value={editLast4}
+                        onChange={e => setEditLast4(e.target.value.slice(-4))}
+                        placeholder="Last 4"
+                        maxLength={4}
+                        className="w-12 sm:w-14 bg-white/5 border border-white/10 px-2 py-1.5 sm:py-2 rounded-xl text-white text-[10px] sm:text-xs font-mono text-center outline-none focus:border-indigo-500"
+                      />
                       <div className="relative">
                         <span className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-slate-500 text-[10px] sm:text-xs">₦</span>
                         <input type="number" value={editValue}
@@ -312,7 +320,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
                           autoFocus
                         />
                       </div>
-                      <button onClick={() => handleAdjustBalance(b.bank, b.account_last4)}
+                      <button onClick={() => handleAdjustBalance(b.bank, editLast4 || '0000')}
                         className="p-1.5 sm:p-2 bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors">
                         <Check size={10} className="sm:size-[12px]" />
                       </button>
@@ -325,7 +333,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
                     <span className="text-xs sm:text-sm font-black tabular-nums font-mono">{fmt(b.balance)}</span>
                   )}
                   {!isAutoTracked && (
-                    <button onClick={() => { setEditingBal(i); setEditValue(b.balance); }}
+                    <button onClick={() => { setEditingBal(i); setEditValue(b.balance); setEditLast4(b.account_last4 || ''); }}
                       className="opacity-0 group-hover:opacity-100 p-1.5 sm:p-2 hover:bg-white/10 rounded-lg transition-all">
                       <Pencil size={10} className="sm:size-[12px] text-slate-500" />
                     </button>
