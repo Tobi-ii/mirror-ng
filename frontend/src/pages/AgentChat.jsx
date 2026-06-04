@@ -45,6 +45,7 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
     setLoading(true)
 
     try {
+      // Try v1 (LLM) first
       const res = await api.chat(userId, userMsg, buildHistory(), sinceDate, untilDate)
       if (res.success) {
         setMessages(prev => [...prev, {
@@ -53,6 +54,22 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
           tool_calls: res.tool_calls_made || []
         }])
         setModelUsed(res.model_used)
+        return
+      }
+    } catch (err) {
+      // v1 failed — fall through to v2
+    }
+
+    // Fall back to v2 (intent-based, no LLM needed)
+    try {
+      const res = await api.chatV2(userId, userMsg, buildHistory())
+      if (res.success) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: res.response,
+          tool_calls: []
+        }])
+        setModelUsed('intent-agent')
       } else {
         setMessages(prev => [...prev, {
           role: 'assistant',
