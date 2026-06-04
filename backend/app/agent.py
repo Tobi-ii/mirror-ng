@@ -177,7 +177,7 @@ RULES:
 - NEVER invent a merchant name, store name, or recipient that isn't in the data.
 
 AUDIT CONTEXT (current view window):
-- Period: {since_date} to {until_date or "present"}
+- Period: {since_date} to {until_date}
 - When asked about spend, transfers, or any time-bounded question, use this period automatically. Do NOT ask the user to specify a date range — the audit window is already set."""
 
 def load_aliases(db_conn, user_id: str) -> List[Dict]:
