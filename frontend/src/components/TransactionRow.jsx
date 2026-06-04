@@ -423,31 +423,13 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
           )}
           
           {isBatchEditing && (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={batchName}
-                onChange={(e) => setBatchName(e.target.value)}
-                className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs w-24"
-                placeholder="Display name"
-                autoFocus
-              />
-              <select
-                value={batchCategory}
-                onChange={(e) => setBatchCategory(e.target.value)}
-                className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs"
-              >
-                {CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-              <span className="text-[8px] text-slate-400">{selectedIds.size} selected</span>
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={handleBatchAlias}
                 disabled={isSaving || selectedIds.size === 0}
                 className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors disabled:opacity-50"
               >
-                Alias Selected ({selectedIds.size})
+                {selectedIds.size === 0 ? 'Select transactions' : `Alias Selected (${selectedIds.size})`}
               </button>
               <button
                 onClick={() => { setIsBatchEditing(false); setSelectedIds(new Set()); }}
@@ -462,6 +444,28 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
       
       {expanded && (
         <div className="p-2 space-y-1">
+          {isBatchEditing && (
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <input
+                type="text"
+                value={batchName}
+                onChange={(e) => setBatchName(e.target.value)}
+                className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs w-32 flex-1 min-w-0"
+                placeholder="Display name"
+                autoFocus
+              />
+              <select
+                value={batchCategory}
+                onChange={(e) => setBatchCategory(e.target.value)}
+                className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs"
+              >
+                {CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+              <span className="text-[8px] text-slate-400 whitespace-nowrap">{selectedIds.size} / {group.transactions.length}</span>
+            </div>
+          )}
           {group.transactions.map((tx, idx) => (
             <TransactionItem
               key={tx.id}
