@@ -1,7 +1,10 @@
+// AgentChat.jsx — A chat interface where users can ask questions about their
+// finances in plain English. Powered by an LLM agent (or a fallback intent system).
 import { useState, useRef, useEffect } from 'react'
 import { api } from '../services/api'
 import { Send, Bot, User, Zap, RotateCcw } from 'lucide-react'
 
+// Suggested questions shown as clickable buttons when the chat is empty
 const SUGGESTIONS = [
   "What's my current balance?",
   "How much did I spend this week?",
@@ -14,6 +17,8 @@ const SUGGESTIONS = [
 ]
 
 export default function AgentChat({ userId, sinceDate, untilDate }) {
+  // ── State ─────────────────────────────────────────────────────────────
+  // messages: the chat history, each with a role ('user' | 'assistant') and content
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -21,21 +26,25 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
       tool_calls: []
     }
   ])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [modelUsed, setModelUsed] = useState(null)
-  const bottomRef = useRef(null)
+  const [input, setInput] = useState('')          // what the user is currently typing
+  const [loading, setLoading] = useState(false)    // true while waiting for agent response
+  const [modelUsed, setModelUsed] = useState(null) // the model/agent that handled the last response
+  const bottomRef = useRef(null)                   // auto-scroll to newest message
 
+  // Auto-scroll to the bottom whenever a new message arrives
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Build history in OpenAI format for the API
+  // Convert the messages array into the format the backend API expects
+  // (skipping the first assistant message — that's just the greeting)
   const buildHistory = () =>
     messages
       .filter(m => m.role !== 'assistant' || messages.indexOf(m) !== 0)
       .map(m => ({ role: m.role, content: m.content }))
 
+  // Send a message to the agent. Tries the full LLM (v1) first, then
+  // falls back to the intent-based agent (v2) if v1 fails.
   const send = async (text) => {
     const userMsg = text || input.trim()
     if (!userMsg || loading) return
@@ -45,7 +54,7 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
     setLoading(true)
 
     try {
-      // Try v1 (LLM) first
+      // Try v1 (full LLM-powered agent) first
       const res = await api.chat(userId, userMsg, buildHistory(), sinceDate, untilDate)
       if (res.success) {
         setMessages(prev => [...prev, {
@@ -100,7 +109,7 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] sm:h-[calc(100vh-120px)] max-w-3xl mx-auto px-0 sm:px-0">
 
-      {/* Header */}
+      {/* Header: title, model status indicator, and reset button */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
         <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tighter uppercase italic">Ask Mirror</h1>
@@ -113,7 +122,7 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
         </button>
       </div>
 
-      {/* Suggestions — only show at start */}
+      {/* Clickable suggestion buttons — shown only when chat is empty */}
       {messages.length === 1 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2 mb-4 sm:mb-6">
           {SUGGESTIONS.map((s, i) => (
@@ -128,7 +137,7 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
         </div>
       )}
 
-      {/* Messages */}
+      {/* Messages: the chat thread — user messages on right, assistant on left */}
       <div className="flex-1 overflow-y-auto space-y-3 sm:space-y-4 pr-1 sm:pr-2">
         {messages.map((msg, i) => (
           <div key={i} className={`flex gap-2 sm:gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
@@ -189,7 +198,7 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
+      {/* Input: text field + send button, supports Enter key to submit */}
       <div className="mt-3 sm:mt-4 flex gap-2 sm:gap-3">
         <input
           type="text"

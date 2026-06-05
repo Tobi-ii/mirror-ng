@@ -2,7 +2,7 @@ import re
 import logging
 from typing import Optional
 from datetime import datetime
-from .base import BankParser, Transaction, categorize
+from .base import BankParser, ParsedTransaction, categorize
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ class SterlingBankParser(BankParser):
     SENDER_PATTERN = r"e-business@sterling\.ng"
     PROVIDES_BALANCE = True
 
-    def parse(self, subject: str, body: str) -> Optional[Transaction]:
+    def parse(self, subject: str, body: str) -> Optional[ParsedTransaction]:
         # Amount: "NGN2,100.00" (no space)
         amount_m = re.search(r"Amount\s+NGN([\d,]+\.?\d*)", body, re.IGNORECASE)
 
@@ -43,7 +43,7 @@ class SterlingBankParser(BankParser):
             except Exception:
                 timestamp = self._date(date_m.group(1).strip())
 
-        return Transaction(
+        return ParsedTransaction(
             bank          = self.BANK_NAME,
             tx_type       = tx_type,
             amount        = self._amount(amount_m.group(1)),

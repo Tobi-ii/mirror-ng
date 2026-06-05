@@ -1,6 +1,13 @@
 """
-Unified Email Fetcher - Supports Yahoo IMAP and Gmail API
+DEPRECATED — This file is a duplicate of the EmailFetcher class defined inside main.py.
+The main.py version is the one actually used in production (see /api/sync endpoint).
+This file is kept only because test_yahoo_fetcher.py and test_imap_simple.py import from it.
+
+If you're adding a new feature, add it to the EmailFetcher class in main.py instead.
 """
+
+import warnings
+warnings.warn("email_fetcher.py is deprecated. Use the EmailFetcher class in main.py instead.", DeprecationWarning, stacklevel=2)
 import imaplib
 import email
 import re
@@ -12,7 +19,7 @@ from email.policy import default
 
 # Import Gmail support
 from .gmail_auth import GmailMirror
-from .parsers import parse_email, Transaction
+from .parsers import parse_email, ParsedTransaction
 
 logger = logging.getLogger(__name__)
 

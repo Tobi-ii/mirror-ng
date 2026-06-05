@@ -2,7 +2,7 @@ import re
 import logging
 from datetime import datetime
 from typing import Optional
-from .base import BankParser, Transaction, categorize
+from .base import BankParser, ParsedTransaction, categorize
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ class OPayParser(BankParser):
     SENDER_PATTERN = r"no-reply@opay-nigeria\.com|opay"
     PROVIDES_BALANCE = True
 
-    def parse(self, subject: str, body: str) -> Optional[Transaction]:
+    def parse(self, subject: str, body: str) -> Optional[ParsedTransaction]:
         # "Your transfer of ₦2,500.00 is successful" → debit
         transfer_m = re.search(r"transfer of ₦([\d,]+\.?\d*)", body, re.IGNORECASE)
         # "₦2,500.00 has been credited" → credit
@@ -48,7 +48,7 @@ class OPayParser(BankParser):
             except Exception:
                 pass
 
-        return Transaction(
+        return ParsedTransaction(
             bank          = self.BANK_NAME,
             tx_type       = tx_type,
             amount        = self._amount(amount_m.group(1)),

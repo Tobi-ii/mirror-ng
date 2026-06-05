@@ -7,8 +7,7 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 @dataclass
-@dataclass
-class Transaction:
+class ParsedTransaction:
     bank: str
     tx_type: str
     amount: float
@@ -60,7 +59,7 @@ class BankParser:
         if any(w in text for w in ['debit', 'money out', 'sent']): return 'debit'
         return 'credit'
 
-    def parse(self, subject: str, body: str) -> Optional[Transaction]:
+    def parse(self, subject: str, body: str) -> Optional[ParsedTransaction]:
         """Subclasses must implement this"""
         raise NotImplementedError("Subclasses must implement parse()")
 

@@ -1,7 +1,10 @@
 import sqlite3
+import logging
 from typing import Optional, List, Dict
 from datetime import datetime
 from .database import get_db
+
+logger = logging.getLogger(__name__)
 
 class BalanceManager:
     """Manages running balances starting from user-provided initial balance"""
@@ -60,7 +63,7 @@ class BalanceManager:
         
         if current is None:
             # Re-added the last 4 here for easier debugging in logs
-            print(f"DEBUG: Balance skipped. No anchor found for {transaction.bank} (*{tx_last4})")
+            logger.warning(f"Balance skipped. No anchor found for {transaction.bank} (*{tx_last4})")
             return None 
         
         if transaction.tx_type == 'credit':

@@ -34,7 +34,7 @@ import re
 import logging
 from datetime import datetime
 from typing import Optional
-from .base import BankParser, Transaction, categorize
+from .base import BankParser, ParsedTransaction, categorize
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class GTBankParser(BankParser):
     SENDER_PATTERN   = r"GeNS@gtbank\.com|gtbank\.com"
     PROVIDES_BALANCE = True
 
-    def parse(self, subject: str, body: str) -> Optional[Transaction]:
+    def parse(self, subject: str, body: str) -> Optional[ParsedTransaction]:
 
         # ── Transaction type ──────────────────────────────────────────
         type_m = re.search(
@@ -128,7 +128,7 @@ class GTBankParser(BankParser):
                 except Exception:
                     pass
 
-        return Transaction(
+        return ParsedTransaction(
             bank          = self.BANK_NAME,
             tx_type       = tx_type,
             amount        = self._amount(amount_m.group(1)),

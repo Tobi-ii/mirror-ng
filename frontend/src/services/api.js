@@ -7,18 +7,16 @@ import { localData } from './localData';
 
 const API_BASE = '';
 
-let _password = null;
-let _cloudSync = true;
-let _userId = null;
-let _token = null;
+// ── Module-level state ──────────────────────────────────────────────────
+// These are set by the App component at login time.
+// They control whether API calls go to the server or to local IndexedDB.
+let _cloudSync = true;   // true = use server, false = use local browser storage
+let _userId = null;      // the active user's ID
+let _token = null;       // the auth token for API requests
 
-export function setPassword(pwd) {
-  _password = pwd;
-}
-
-export function clearPassword() {
-  _password = null;
-}
+// ── Module state setters ─────────────────────────────────────────────────
+// These are exported so App.jsx can configure this module without passing
+// everything down as props.
 
 export function setCloudSync(enabled) {
   _cloudSync = enabled;
@@ -40,6 +38,8 @@ export function clearToken() {
   _token = null;
 }
 
+// Retrieve the auth token — first from memory, then fall back to localStorage
+// (in case the page was refreshed and the in-memory token was lost)
 function getToken() {
   if (_token) return _token;
   try {
@@ -56,6 +56,8 @@ function getUserId() {
   } catch { return null; }
 }
 
+// fetch() wrapper that automatically attaches the Bearer token to every request.
+// If the server returns 401 (Unauthorized), the token is cleared.
 async function authFetch(url, options = {}) {
   const headers = { ...(options.headers || {}) };
   const token = getToken();
@@ -65,12 +67,15 @@ async function authFetch(url, options = {}) {
   const res = await fetch(url, { ...options, headers });
   if (res.status === 401) {
     clearToken();
-    clearPassword();
     throw new Error('Unauthorized');
   }
   return res;
 }
 
+// ── API methods ──────────────────────────────────────────────────────────
+// Each method follows the same pattern:
+//   • If cloud sync is ON  → send the request to the FastAPI backend
+//   • If cloud sync is OFF → read/write directly to the browser's IndexedDB
 export const api = {
   /**
    * Health check to verify backend connectivity
@@ -131,9 +136,6 @@ export const api = {
       since_date: sinceDate,
       until_date: untilDate 
     };
-    if (_password) {
-      body.password = _password;
-    }
     const res = await authFetch(`${API_BASE}/api/sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -144,20 +146,21 @@ export const api = {
       throw new Error(JSON.stringify(err.detail) || 'Failed to sync with mail server');
     }
     const data = await res.json();
-    // When cloud sync is off, store results locally
-    if (!_cloudSync && data.success && data.new_transactions?.length) {
-      await localData.saveTransactions(userId, data.new_transactions);
-      // Derive balances from transactions
-      const localBals = await localData.getBalances(userId);
-      for (const tx of data.new_transactions) {
-        const existing = localBals.find(b => b.bank === tx.bank);
-        if (tx.balance !== null && tx.balance !== undefined) {
-          if (existing) existing.balance = tx.balance;
-          else localBals.push({ bank: tx.bank, account_last4: tx.account_last4 || '0000', balance: tx.balance, last_updated: tx.timestamp, is_anchor: false });
+      // When cloud sync is off, store the newly synced transactions in local IndexedDB
+      if (!_cloudSync && data.success && data.new_transactions?.length) {
+        await localData.saveTransactions(userId, data.new_transactions);
+        // Also update local balances: if a synced transaction includes a balance
+        // for a bank, save/update it so the dashboard stays accurate
+        const localBals = await localData.getBalances(userId);
+        for (const tx of data.new_transactions) {
+          const existing = localBals.find(b => b.bank === tx.bank);
+          if (tx.balance !== null && tx.balance !== undefined) {
+            if (existing) existing.balance = tx.balance;
+            else localBals.push({ bank: tx.bank, account_last4: tx.account_last4 || '0000', balance: tx.balance, last_updated: tx.timestamp, is_anchor: false });
+          }
         }
+        await localData.saveBalances(userId, localBals);
       }
-      await localData.saveBalances(userId, localBals);
-    }
     return data;
   },
 
@@ -167,6 +170,8 @@ export const api = {
   getBalances: async (userId) => {
     if (!_cloudSync) {
       const bals = await localData.getBalances(userId);
+      // Which banks send their balance along with each transaction alert?
+      // Banks marked 'true' can be auto-tracked without needing a manual anchor.
       const PROVIDES_BALANCE_BY_BANK = {
         'Sterling Bank': false, 'Wema Bank': true, 'ALAT': true,
         'OPay': true, 'Kuda': true, 'GTBank': true, 'Access Bank': true,
@@ -249,6 +254,7 @@ export const api = {
       const txs = await localData.getTransactions(userId);
       if (txs.length < 2) return { success: true, anomalies: [], forecast: { forecast: [], trend: 'insufficient_data', daily_avg: 0, weekly_projection: 0 }, message: 'Insufficient data for insights' };
 
+      // ── Local forecasting (runs in the browser, no LLM needed) ──
       // Daily debit aggregation and linear regression forecast
       const daily = {};
       txs.forEach(tx => {
@@ -261,6 +267,8 @@ export const api = {
       const dates = Object.keys(daily).sort();
       if (dates.length < 2) return { success: true, anomalies: [], forecast: { forecast: [], trend: 'insufficient_data', daily_avg: 0, weekly_projection: 0 } };
 
+      // Simple linear regression: predict future spend based on past daily totals
+      // x = days since first transaction, y = total debit amount for that day
       const base = new Date(dates[0]);
       const X = dates.map(d => (new Date(d) - base) / 86400000);
       const y = dates.map(d => daily[d]);
@@ -289,7 +297,9 @@ export const api = {
         weekly_projection: Math.round(forecast.reduce((s, f) => s + f.predicted_spend, 0) * 100) / 100,
       };
 
-      // Z-score anomaly detection
+      // ── Anomaly detection via Z-score ──
+      // For each category, calculate how many standard deviations a transaction
+      // is from the mean. If Z > 2.0, flag it as unusual.
       const byCategory = {};
       txs.forEach(tx => {
         if (tx.tx_type !== 'debit') return;

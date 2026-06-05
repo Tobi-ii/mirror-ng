@@ -3,9 +3,13 @@ auth.py — JWT authentication for Mirror.ng
 """
 import os
 import logging
+import base64
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from fastapi import Request, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -14,6 +18,23 @@ logger = logging.getLogger(__name__)
 SECRET_KEY = os.environ["SECRET_KEY"]
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
+
+# ── Fernet encryption for email passwords ──────────────────────────
+_salt = b'mirror-ng-email-pw-v1'
+
+def _get_fernet():
+    """Derive a Fernet key from the app SECRET_KEY."""
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=_salt, iterations=100000)
+    key = base64.urlsafe_b64encode(kdf.derive(SECRET_KEY.encode()))
+    return Fernet(key)
+
+def encrypt_password(plaintext: str) -> str:
+    """Encrypt an email password for server-side storage."""
+    return _get_fernet().encrypt(plaintext.encode()).decode()
+
+def decrypt_password(ciphertext: str) -> str:
+    """Decrypt a stored email password."""
+    return _get_fernet().decrypt(ciphertext.encode()).decode()
 
 security = HTTPBearer(auto_error=False)
 

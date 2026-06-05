@@ -1,3 +1,5 @@
+// Dashboard.jsx — The main screen after login. Shows balances, transactions,
+// charts, agent chat, insights, settings. All the core functionality lives here.
 import { useState, useRef, useEffect } from 'react';
 import { 
   LayoutDashboard, History, LogOut, Brain, MessageSquare, Settings as LucideSettings 
@@ -18,14 +20,17 @@ import CustomSelect from "../components/CustomSelect";
 import MLGroupView from "../components/MLGroupView";
 import OnboardingGapsModal from '../components/OnboardingGapsModal';
 
+// The list of banks users can choose from when manually adding an account
 const SUPPORTED_BANKS = [
   'Sterling Bank', 'Wema (ALAT)', 'GTBank', 'Access Bank',
   'First Bank', 'Kuda', 'OPay', 'Moniepoint', 'PalmPay',
   'Piggyvest', 'Cowrywise', 'Other',
 ];
 
+// The "+ Add Account" card that appears alongside the balance cards.
+// Clicking it opens an inline form where you pick a bank, last 4 digits, and starting balance.
 function AddManualCard({ onAdd }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false);    // is the form expanded?
   const [bank, setBank] = useState('Piggyvest');
   const [last4, setLast4] = useState('');
   const [balance, setBalance] = useState('');
@@ -95,25 +100,29 @@ function AddManualCard({ onAdd }) {
   );
 }
 
-export default function Dashboard({ userId, emailPassword, onLogout, onCloudSyncChange }) {
-  const [transactions, setTransactions] = useState([]);
-  const [balances, setBalances] = useState([]);
-  const [aliases, setAliases] = useState([]);
-  const [syncing, setSyncing] = useState(false);
-  const [auditExpanded, setAuditExpanded] = useState(false);
+export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
+  // ── Data state (loaded from API / local storage) ────────────────────
+  const [transactions, setTransactions] = useState([]);     // all bank transactions
+  const [balances, setBalances] = useState([]);              // bank account balances
+  const [aliases, setAliases] = useState([]);                // user-defined transaction name aliases
+  const [syncing, setSyncing] = useState(false);              // true while syncing with email
+
+  // ── UI state ─────────────────────────────────────────────────────────
+  const [auditExpanded, setAuditExpanded] = useState(false);  // show full audit trail?
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem(`mirror_onboarded_${userId}`));
   const [showSettings, setShowSettings] = useState(false);
-  const [showGaps, setShowGaps] = useState(false);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [isBlurred, setIsBlurred] = useState(false);
-  const [hoverLabel, setHoverLabel] = useState('');
-  const [bankFilter, setBankFilter] = useState('all');
-  const [execMode, setExecMode] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  const timerRef = useRef(null);
-  const mainRef = useRef(null);
+  const [showGaps, setShowGaps] = useState(false);            // show banking gaps after sync
+  const [activeTab, setActiveTab] = useState('dashboard');    // 'dashboard' | 'ask' | 'insights' | 'history'
+  const [isBlurred, setIsBlurred] = useState(false);           // blur overlay for nav hover effect
+  const [hoverLabel, setHoverLabel] = useState('');             // text shown during blur
+  const [bankFilter, setBankFilter] = useState('all');          // filter transactions by bank
+  const [execMode, setExecMode] = useState(false);             // executive dashboard mode
+  const [scrolled, setScrolled] = useState(false);              // has user scrolled?
+  const [isMobile, setIsMobile] = useState(false);              // is the viewport mobile-sized?
+  const timerRef = useRef(null);   // tracks the blur-effect hover timer
+  const mainRef = useRef(null);     // reference to the scrollable main container
 
+  // Detect mobile vs desktop layout (re-checks on resize)
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 767px)');
     setIsMobile(mq.matches);
@@ -122,11 +131,12 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
     return () => mq.removeEventListener('change', handler);
   }, []);
 
+  // Once onboarding is dismissed, mark it so it doesn't show again on reload
   useEffect(() => {
     if (!showOnboarding) localStorage.setItem(`mirror_onboarded_${userId}`, 'true');
   }, [showOnboarding, userId]);
 
-  // Load data on mount when user is already onboarded (e.g. page refresh)
+  // If the user is already onboarded (page refresh), load data from the API
   useEffect(() => {
     if (userId && !showOnboarding) {
       refreshTransactions();
@@ -134,10 +144,11 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
     }
   }, [userId]);
 
-  const [sinceDate, setSinceDate] = useState('2026-01-01');
-  const [untilDate, setUntilDate] = useState(null);
+  const [sinceDate, setSinceDate] = useState('2026-01-01');  // start of the audit window
+  const [untilDate, setUntilDate] = useState(null);            // end date (null = no end)
 
   // ── Audit window filter ──────────────────────────────────────────────
+  // Only show transactions within the sinceDate → untilDate range
   const auditFilteredTransactions = transactions.filter(tx => {
     if (!tx.timestamp) return false;
     const txDate = tx.timestamp.split('T')[0];
@@ -146,7 +157,9 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
       : txDate >= sinceDate;
   });
 
-  // ── Alias application with original narration preservation ───────────
+  // ── Apply aliases to transactions ─────────────────────────────────────
+  // Replaces raw bank narration text with user-friendly names (e.g.
+  // "POS DEBIT WDF*UBER TRIP" → "Uber"). Also applies ML suggestions.
   const applyAliases = (txList) => {
     return txList.map(tx => {
       const match = aliases.length > 0 ? aliases.find(a =>
@@ -170,11 +183,15 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
     });
   };
 
+  // Transactions with aliases applied (used everywhere in the UI)
   const aliasedTransactions = applyAliases(auditFilteredTransactions);
 
   // ── Balance display logic ────────────────────────────────────────────
   // Deduplicate by (bank + last4) — accounts with different last4s are separate
   // Normalize null/empty last4 to '0000' so OPay (parser sets null) and manual entries match
+  //    • If two entries exist for the same bank + last4:
+  //      prefer the auto-tracked one (non-anchor) over the manual anchor
+  //      prefer the one with a real last4 over one with '0000'
   const normLast4 = (v) => (v || '0000');
   const dedupedBalances = [];
   const seenKeys = new Set();
@@ -193,6 +210,8 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
     }
   });
 
+  // Build a list of banks that have transaction data (synced from email alerts).
+  // Their balance is calculated as: manual anchor balance OR net credit/debit sum.
   const syncedBanks = [...new Set(auditFilteredTransactions.map(t => `${t.bank}::${normLast4(t.account_last4)}`))].map(key => {
     const [bank, last4] = key.split('::');
     const bankTxs = auditFilteredTransactions.filter(t => t.bank === bank && normLast4(t.account_last4) === last4);
@@ -207,10 +226,12 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
     };
   });
 
+  // Banks that have a manual balance entry but no synced transactions
   const manualBanks = dedupedBalances
     .filter(b => !syncedBanks.find(s => s.bank === b.bank && normLast4(s.account_last4) === normLast4(b.account_last4)))
     .map(b => ({ ...b, isSynced: false }));
 
+  // Final combined list: synced banks first, then manual-only banks
   const displayBalances = [...syncedBanks, ...manualBanks]
     .sort((a, b) => a.isSynced === b.isSynced ? 0 : a.isSynced ? -1 : 1);
 
@@ -223,7 +244,7 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
     ? aliasedTransactions
     : aliasedTransactions.filter(t => t.bank === bankFilter);
 
-  // ── API helpers ──────────────────────────────────────────────────────
+  // ── API helpers: load data from backend (or local storage) ──────────
   const loadAliases = async () => {
     try {
       const res = await api.getAliases(userId);
@@ -253,11 +274,13 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
     }
   };
 
+  // Close settings panel and refresh balance data
   const closeSettings = () => {
     setShowSettings(false);
     refreshBalances();
   };
 
+  // Add a new bank account manually (with starting balance)
   const handleAddAccount = async (bank, last4, balance) => {
     try {
       const res = await api.setInitialBalances(userId, [{
@@ -314,6 +337,7 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
     }
   };
 
+  // Manually trigger a sync: fetch new transactions from the connected email
   const handleSync = async () => {
     setSyncing(true);
     try {
@@ -339,6 +363,8 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
     }
   };
 
+  // Hover over a nav item → after 800ms, blur the whole screen and show a giant label
+  // This is a visual gimmick — not functional, just a nice UI touch
   const handleMouseEnter = (label) => {
     if (isMobile) return;
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -346,14 +372,17 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
     timerRef.current = setTimeout(() => setIsBlurred(true), 800);
   };
 
+  // Mouse leaves the nav item → remove blur immediately
   const handleMouseLeave = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     setIsBlurred(false);
     setHoverLabel('');
   };
 
+  // Format a number as Nigerian Naira, e.g. ₦1,234,567.89
   const fmt = (n) => `₦${Number(n).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`;
 
+  // A row of buttons to filter transactions by bank
   const BankFilterBar = () => (
     banks.length > 1 ? (
       <div className="flex items-center gap-2 flex-wrap">
@@ -373,7 +402,7 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
 
   return (
     <div className="relative min-h-screen bg-[#050608] text-white overflow-hidden">
-      {/* Blur overlay */}
+      {/* Black overlay that blurs the screen when hovering nav items */}
       <div className={`fixed inset-0 z-[95] transition-all duration-700 pointer-events-none ${isBlurred ? 'backdrop-blur-[64px] bg-black/80 opacity-100' : 'backdrop-blur-0 opacity-0'}`} />
       
       {isBlurred && (
@@ -424,6 +453,7 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
         }`}
         style={{ backfaceVisibility: 'hidden' }}
       >
+        {/* Top bar: sync button, date range picker, executive mode toggle */}
         <DashboardHeader
           sinceDate={sinceDate} untilDate={untilDate}
           onNewAudit={() => { localStorage.removeItem(`mirror_onboarded_${userId}`); setShowOnboarding(true); }}
@@ -435,7 +465,7 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
 
         <div className="p-4 sm:p-8 pb-32 max-w-[1700px] mx-auto space-y-6 sm:space-y-10">
 
-          {/* Hero */}
+          {/* Hero: total liquidity, inflow, outflow, account count */}
           <section className="space-y-4 text-center flex flex-col items-center w-full">
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />
@@ -468,7 +498,7 @@ export default function Dashboard({ userId, emailPassword, onLogout, onCloudSync
             )}
           </section>
 
-          {/* Executive mode */}
+          {/* Executive mode: high-level overview for power users */}
           {activeTab === 'dashboard' && execMode && (
             <ExecutiveDashboard transactions={aliasedTransactions} />
           )}

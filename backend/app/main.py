@@ -33,7 +33,7 @@ from googleapiclient.discovery import build
 import base64
 
 # Auth
-from .auth import create_access_token, get_current_user_id
+from .auth import create_access_token, get_current_user_id, encrypt_password, decrypt_password
 
 # Core Modules
 from .database import get_db, init_db
@@ -63,6 +63,24 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ── In-memory rate limiter ─────────────────────────────────────────
+from collections import defaultdict
+import time
+
+_rate_limit_store = defaultdict(list)
+
+def check_rate_limit(ip: str, max_attempts: int = 5, window_seconds: int = 60):
+    """Returns True if under limit, False if rate-limited."""
+    now = time.time()
+    window_start = now - window_seconds
+    attempts = _rate_limit_store[ip]
+    # Prune old entries
+    _rate_limit_store[ip] = [t for t in attempts if t > window_start]
+    if len(_rate_limit_store[ip]) >= max_attempts:
+        return False
+    _rate_limit_store[ip].append(now)
+    return True
 
 app = FastAPI(
     title="Mirror.ng API",
@@ -398,11 +416,20 @@ async def health_check():
 @app.get("/api/auth/google/login")
 async def google_login(request: Request):
     redirect_uri = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:8000/api/auth/google/callback')
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    state = os.urandom(32).hex()
+    request.session['oauth_state'] = state
+    return await oauth.google.authorize_redirect(request, redirect_uri, state=state)
 
 @app.get("/api/auth/google/callback")
 async def google_auth_callback(request: Request):
     try:
+        # Verify OAuth state to prevent CSRF
+        expected_state = request.session.pop('oauth_state', None)
+        actual_state = request.query_params.get('state')
+        if not expected_state or not actual_state or expected_state != actual_state:
+            logger.error("OAuth state mismatch — possible CSRF attack")
+            return JSONResponse({"success": False, "error": "Authentication failed"}, status_code=400)
+
         token = await oauth.google.authorize_access_token(request)
         # Try token first (openid scope includes it), fall back to API call
         userinfo = token.get('userinfo')
@@ -427,6 +454,7 @@ async def google_auth_callback(request: Request):
                 auth_provider TEXT DEFAULT 'yahoo',
                 access_token TEXT,
                 refresh_token TEXT,
+                email_password_enc TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -461,6 +489,15 @@ async def google_auth_callback(request: Request):
 
 @app.post("/api/auth/email-login")
 async def email_login(request: Request):
+    # Rate limit: 5 attempts per 60s per IP
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_rate_limit(client_ip):
+        logger.warning(f"Rate limit hit for {client_ip}")
+        return JSONResponse({
+            "success": False,
+            "error": "Too many login attempts. Try again later."
+        }, status_code=429)
+
     data = await request.json()
     email_addr = data.get('email')
     password = data.get('password')
@@ -486,22 +523,31 @@ async def email_login(request: Request):
                 auth_provider TEXT DEFAULT 'yahoo',
                 access_token TEXT,
                 refresh_token TEXT,
+                email_password_enc TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         conn.commit()
+
+        try:
+            conn.execute('ALTER TABLE users ADD COLUMN email_password_enc TEXT')
+            conn.commit()
+        except Exception:
+            pass
 
         cursor = conn.execute('SELECT * FROM users WHERE email = ?', (email_addr,))
         user = cursor.fetchone()
 
         if not user:
             cursor = conn.execute('''
-                INSERT INTO users (email, name, auth_provider)
-                VALUES (?, ?, ?) RETURNING id
-            ''', (email_addr, email_addr.split('@')[0] if '@' in email_addr else email_addr, provider))
+                INSERT INTO users (email, name, auth_provider, email_password_enc)
+                VALUES (?, ?, ?, ?) RETURNING id
+            ''', (email_addr, email_addr.split('@')[0] if '@' in email_addr else email_addr, provider, encrypt_password(password)))
             user_id = cursor.fetchone()['id']
         else:
             user_id = user['id']
+            conn.execute('UPDATE users SET email_password_enc = ? WHERE id = ?',
+                         (encrypt_password(password), user_id))
 
         conn.commit()
         conn.close()
@@ -513,18 +559,12 @@ async def email_login(request: Request):
             "access_token": token
         })
 
-    except imaplib.IMAP4.error as e:
-        logger.error(f"IMAP login error")
+    except Exception:
+        logger.error(f"Email login failed for {email_addr}")
         return JSONResponse({
             "success": False,
-            "error": "Invalid credentials. For Gmail, use an App Password."
+            "error": "Login failed. Check your credentials and try again."
         }, status_code=401)
-    except Exception as e:
-        logger.error(f"Email login error")
-        return JSONResponse({
-            "success": False,
-            "error": "Connection failed. Please try again."
-        }, status_code=500)
 
 
 # ============ TRANSACTION ROUTES ============
@@ -570,7 +610,7 @@ async def sync_transactions(request: SyncRequest, req: Request):
     conn = get_db()
     try:
         cursor = conn.execute('''
-            SELECT email, auth_provider, access_token, refresh_token
+            SELECT email, auth_provider, access_token, refresh_token, email_password_enc
             FROM users WHERE id = ?
         ''', (request.user_id,))
         user = cursor.fetchone()
@@ -601,10 +641,14 @@ async def sync_transactions(request: SyncRequest, req: Request):
                 refresh_token=user['refresh_token']
             )
         else:
-            # Email-based user — password must come from request body
-            password = request.password
-            if not password:
-                raise HTTPException(status_code=400, detail="Password required for sync. Please login again.")
+            # Email-based user — decrypt stored password
+            enc_pw = user['email_password_enc']
+            if not enc_pw:
+                raise HTTPException(status_code=400, detail="Password not stored. Please login again.")
+            try:
+                password = decrypt_password(enc_pw)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Failed to decrypt stored password. Please login again.")
             fetcher = EmailFetcher(
                 email_address=email_addr,
                 password=password,

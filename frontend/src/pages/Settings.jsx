@@ -1,3 +1,9 @@
+// Settings.jsx — The settings panel where users can:
+//   • View/edit bank account balances
+//   • Manage transaction aliases (name patterns)
+//   • Toggle cloud sync on/off
+//   • Export/import data
+//   • Log out
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Trash2, LogOut, Pencil, Check, X, AlertTriangle, Sparkles, Cloud, CloudOff, Download, Upload, ChevronDown, ChevronRight, List, Layers } from 'lucide-react';
 import { api, setCloudSync, isCloudSync, exportCSV } from '../services/api';
@@ -5,22 +11,24 @@ import { localData } from '../services/localData';
 import TransactionList from '../components/TransactionRow';
 
 export function Settings({ userId, onBack, onLogout, transactions, onDataChanged, onCloudSyncChange }) {
-  const [balances, setBalances] = useState([]);
-  const [aliases, setAliases] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [editingBal, setEditingBal] = useState(null);
-  const [editValue, setEditValue] = useState('');
-  const [editLast4, setEditLast4] = useState('');
-  const [deletingAlias, setDeletingAlias] = useState(null);
+  // ── State ─────────────────────────────────────────────────────────────
+  const [balances, setBalances] = useState([]);           // bank accounts with their balances
+  const [aliases, setAliases] = useState([]);             // user-defined transaction name aliases
+  const [loading, setLoading] = useState(true);            // loading data from API
+  const [editingBal, setEditingBal] = useState(null);      // index of the balance being edited (or null)
+  const [editValue, setEditValue] = useState('');           // new balance value during editing
+  const [editLast4, setEditLast4] = useState('');           // last 4 digits during editing
+  const [deletingAlias, setDeletingAlias] = useState(null); // alias ID being deleted
   const [clearingAliases, setClearingAliases] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
-  const [expandedAliasGroups, setExpandedAliasGroups] = useState({});
-  const [cloudSync, setCloudSyncLocal] = useState(true);
-  const [migrating, setMigrating] = useState(false);
-  const [showMigrateConfirm, setShowMigrateConfirm] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);  // confirm "clear all aliases" dialog
+  const [expandedAliasGroups, setExpandedAliasGroups] = useState({}); // which alias groups are expanded
+  const [cloudSync, setCloudSyncLocal] = useState(true);    // current cloud sync state
+  const [migrating, setMigrating] = useState(false);        // true during data migration
+  const [showMigrateConfirm, setShowMigrateConfirm] = useState(false); // show migration confirmation dialog
   const [migrateDirection, setMigrateDirection] = useState(null); // 'to-local' or 'to-cloud'
-  const [txViewMode, setTxViewMode] = useState('flat'); // 'flat' or 'grouped'
+  const [txViewMode, setTxViewMode] = useState('flat');              // 'flat' or 'grouped' transaction view
 
+  // On mount: fetch all data from the API (balances, aliases, cloud sync preference)
   useEffect(() => {
     Promise.all([
       api.getBalances(userId),
@@ -30,7 +38,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
       setCloudSyncLocal(syncRes?.success ? syncRes.cloud_sync : true);
       let loadedBals = balRes?.success ? balRes.balances : [];
 
-      // Add banks that have transactions but no balance record (anchor not set)
+      // Include banks that have transactions but still need a balance anchor set
       const normLast4 = (v) => (v || '0000');
       const balBankKeys = new Set(loadedBals.map(b => b.bank + '|' + normLast4(b.account_last4)));
       const latestTxPerBank = {};
@@ -61,6 +69,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
     }).finally(() => setLoading(false));
   }, [userId, transactions]);
 
+  // Delete a manually-added bank account balance
   const handleDeleteBalance = async (bank, last4) => {
     await api.deleteBalance(userId, bank, last4);
     const balRes = await api.getBalances(userId);
@@ -68,6 +77,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
     if (onDataChanged) onDataChanged();
   };
 
+  // Manually adjust a bank's balance (opens an inline input)
   const handleAdjustBalance = async (bank, last4) => {
     await api.adjustBalance(userId, bank, last4 || '0000', parseFloat(editValue), 'user_manual_adjustment');
     const balRes = await api.getBalances(userId);
@@ -76,6 +86,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
     if (onDataChanged) onDataChanged();
   };
 
+  // Delete a single transaction alias
   const handleDeleteAlias = async (aliasId) => {
     await api.deleteAlias(userId, aliasId);
     const aliasRes = await api.getAliases(userId);
@@ -83,6 +94,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
     setDeletingAlias(null);
   };
 
+  // Delete every single alias (used after user confirms "Clear All")
   const handleClearAllAliases = async () => {
     setClearingAliases(true);
     for (const a of aliases) {
@@ -93,6 +105,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
     setConfirmClear(false);
   };
 
+  // Toggle cloud sync. Shows a confirmation dialog that explains the migration.
   const handleToggleCloudSync = async () => {
     const newVal = !cloudSync;
     if (newVal) {
@@ -105,12 +118,15 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
     setShowMigrateConfirm(true);
   };
 
+  // Actually perform the data migration after the user confirms.
+  // 'to-local'  = download from server → save in IndexedDB
+  // 'to-cloud'  = upload from IndexedDB → save on server
   const confirmMigration = async () => {
     setShowMigrateConfirm(false);
     setMigrating(true);
     try {
       if (migrateDirection === 'to-local') {
-        // Export from server to local
+        // Download from server, then save everything in the browser's IndexedDB
         const exportRes = await api.exportData(userId);
         if (exportRes?.success) {
           await localData.clearUser(userId);
@@ -152,6 +168,10 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
   const syncedBanks = new Set((transactions || []).map(t => t.bank));
   const _isUnanchored = (b) => b._isUnanchored === true;
 
+  // Categorize a bank account status:
+  //   'auto_tracked'  — bank sends balances with every alert (no manual input needed)
+  //   'anchor_needed' — bank has transactions but no anchor balance set yet
+  //   'manual'        — user added this manually
   const getCategory = (b) => {
     if (b.provides_balance) return 'auto_tracked';
     if (_isUnanchored(b) || syncedBanks.has(b.bank)) return 'anchor_needed';
@@ -169,6 +189,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
 
   const fmt = (n) => `₦${Number(n).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`;
 
+  // Show a loader while balances, aliases, and sync preference are loading
   if (loading) {
     return (
       <div className="min-h-screen bg-[#050608] flex items-center justify-center">
@@ -180,7 +201,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
   return (
     <div className="min-h-screen bg-[#050608] text-white">
       <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 sm:py-10 space-y-8 sm:space-y-12">
-        {/* Header */}
+        {/* Header: back button, title, logout */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 sm:gap-6 min-w-0">
             <button onClick={onBack} className="p-2 sm:p-3 bg-white/5 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-colors shrink-0">
@@ -196,7 +217,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
           </button>
         </div>
 
-        {/* Cloud Sync Toggle */}
+        {/* Cloud Sync Toggle: switch between server storage and browser-only storage */}
         <section className="space-y-4">
           <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Data Sync</h2>
           <div className="bg-[#0a0c10] border border-white/5 rounded-2xl px-4 sm:px-6 py-4 sm:py-5">
@@ -282,7 +303,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
           </div>
         )}
 
-        {/* Balances */}
+        {/* Balances: list of all bank accounts with edit/delete controls */}
         <section className="space-y-4">
           <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Bank Accounts ({balances.length})</h2>
           <div className="space-y-2">
@@ -354,7 +375,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
           </div>
         </section>
 
-        {/* Aliases */}
+        {/* Aliases: user-defined names that replace raw bank narration text */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">
@@ -421,7 +442,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
           </div>
         </section>
 
-        {/* All Transactions */}
+        {/* All Transactions: full transaction history with flat/grouped toggle */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">

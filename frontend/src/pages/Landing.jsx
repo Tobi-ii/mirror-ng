@@ -1,17 +1,21 @@
+// Landing.jsx — The first page users see. Shows a hero section with login
+// options (Google OAuth, Yahoo Mail, Gmail App Password) and info panels.
 import React, { useState, useEffect } from 'react'
 import { Shield, Zap, Github, Mail, Database, Lock, Clock, AlertCircle, Eye, EyeOff } from 'lucide-react'
 
 export function Landing({ onLogin }) {
-  const [isLoading, setIsLoading] = useState(false)
-  const [showEmailForm, setShowEmailForm] = useState(false)
-  const [emailFormProvider, setEmailFormProvider] = useState('yahoo')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [subSlide, setSubSlide] = useState(0)
-  const [isIntroActive, setIsIntroActive] = useState(true)
+  // ── UI state ──────────────────────────────────────────────────────────
+  const [isLoading, setIsLoading] = useState(false)        // true while login is in progress
+  const [showEmailForm, setShowEmailForm] = useState(false) // show the inline email/password form?
+  const [emailFormProvider, setEmailFormProvider] = useState('yahoo') // 'yahoo' or 'gmail'
+  const [email, setEmail] = useState('')                    // email address typed by user
+  const [password, setPassword] = useState('')              // app password typed by user
+  const [error, setError] = useState('')                    // error message to display
+  const [showPassword, setShowPassword] = useState(false)   // toggle password visibility
+  const [subSlide, setSubSlide] = useState(0)               // which info panel (0 or 1) is showing
+  const [isIntroActive, setIsIntroActive] = useState(true)  // true during the initial 4s zoomed-in intro
 
+  // On mount: hide the intro layout after 4 seconds, then cycle info panels every 10 seconds
   useEffect(() => {
     const layoutTimer = setTimeout(() => {
       setIsIntroActive(false)
@@ -27,6 +31,8 @@ export function Landing({ onLogin }) {
     }
   }, [])
 
+  // Called when the user clicks "Connect" on the email form.
+  // Sends the email/password to the backend, then calls onLogin() if successful.
   const handleEmailLogin = async () => {
     if (!email || !password) return
     setIsLoading(true)
@@ -50,10 +56,11 @@ export function Landing({ onLogin }) {
     }
   }
 
+  // ── Render ───────────────────────────────────────────────────────────
   return (
     <div className="h-screen bg-[#050608] overflow-hidden flex flex-col select-none text-white font-sans">
       
-      {/* ── HEADER ────────────────────────────────────────────────────── */}
+      {/* ── HEADER: logo + GitHub link ────────────────────────────────── */}
       <header className="h-14 sm:h-16 border-b border-white/[0.03] bg-[#050608]/80 backdrop-blur-xl px-4 sm:px-10 flex items-center justify-between z-20 shrink-0">
         <div className="flex flex-col">
           <h1 className="font-black tracking-tighter text-lg sm:text-xl leading-tight">
@@ -70,7 +77,7 @@ export function Landing({ onLogin }) {
         </a>
       </header>
 
-      {/* ── MAIN CONTENT ──────────────────────────────────────────────── */}
+      {/* ── MAIN CONTENT: hero + login buttons + info panels ──────────── */}
       <main className="flex-1 relative max-w-7xl mx-auto w-full px-4 sm:px-10 flex items-center min-h-0">
         
         <div className="grid grid-cols-1 md:grid-cols-12 w-full items-center gap-12 transition-all [transition-duration:1200ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]">
@@ -118,7 +125,7 @@ export function Landing({ onLogin }) {
               </div>
             </div>
 
-            {/* Auth buttons */}
+            {/* Auth buttons: Google OAuth, Yahoo, or Gmail App Password */}
             <div className="w-full max-w-md flex flex-col gap-4 items-center mx-auto">
               {!showEmailForm ? (
                 <>

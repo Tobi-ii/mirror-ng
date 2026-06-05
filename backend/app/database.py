@@ -1,7 +1,10 @@
 import sqlite3
 import os
+import logging
 from typing import Optional, List, Dict
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = os.environ.get('DB_PATH', os.path.join(os.path.dirname(__file__), '..', 'mirror.db'))
 
@@ -155,61 +158,48 @@ def init_db():
         ON user_aliases(user_id, recipient_pattern)
     ''')
     
+    # Run schema migrations right after creating tables
+    _migrate_users_table(conn)
+    _drop_old_email_password_column(conn)
+    
     conn.commit()
     conn.close()
 
-def migrate_users_table():
+def _migrate_users_table(conn):
     """Migrate existing users table to new schema"""
-    conn = get_db()
-    
-    # Check if user_id column exists and migrate if needed
-    cursor = conn.execute("PRAGMA table_info(users)")
-    columns = [col[1] for col in cursor.fetchall()]
-    
-    if 'user_id' in columns and 'id' not in columns:
-        # Migrate old schema to new schema
-        conn.execute('''
-            ALTER TABLE users RENAME TO users_old
-        ''')
+    try:
+        cursor = conn.execute("PRAGMA table_info(users)")
+        columns = [col[1] for col in cursor.fetchall()]
         
-        conn.execute('''
-            CREATE TABLE users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT UNIQUE,
-                email TEXT UNIQUE NOT NULL,
-                name TEXT,
-                auth_provider TEXT DEFAULT 'yahoo',
-                access_token TEXT,
-                refresh_token TEXT,
-                token_expiry TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_sync_at TIMESTAMP
-            )
-        ''')
-        
-        conn.execute('''
-            INSERT INTO users (user_id, email, name, created_at, last_sync_at)
-            SELECT user_id, email, name, created_at, last_sync_at FROM users_old
-        ''')
-        
-        conn.execute('DROP TABLE users_old')
-        conn.commit()
-    
-    conn.close()
+        if 'user_id' in columns and 'id' not in columns:
+            conn.execute('ALTER TABLE users RENAME TO users_old')
+            conn.execute('''
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT UNIQUE,
+                    email TEXT UNIQUE NOT NULL,
+                    name TEXT,
+                    auth_provider TEXT DEFAULT 'yahoo',
+                    access_token TEXT,
+                    refresh_token TEXT,
+                    token_expiry TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_sync_at TIMESTAMP
+                )
+            ''')
+            conn.execute('''
+                INSERT INTO users (user_id, email, name, created_at, last_sync_at)
+                SELECT user_id, email, name, created_at, last_sync_at FROM users_old
+            ''')
+            conn.execute('DROP TABLE users_old')
+    except Exception as e:
+        logger.warning(f"User table migration skipped: {e}")
 
-# Run migration on import
-try:
-    migrate_users_table()
-except Exception as e:
-    print(f"Migration warning: {e}")
-
-# Drop email_password column if it still exists from old schema
-try:
-    conn = get_db()
-    conn.execute("ALTER TABLE users DROP COLUMN email_password")
-    conn.commit()
-    conn.close()
-except sqlite3.OperationalError:
-    pass  # Column already gone
-except Exception as e:
-    print(f"Column cleanup warning: {e}")
+def _drop_old_email_password_column(conn):
+    """Drop email_password column if it exists (moved to encrypted storage)"""
+    try:
+        conn.execute("ALTER TABLE users DROP COLUMN email_password")
+    except sqlite3.OperationalError:
+        pass  # Column already gone
+    except Exception as e:
+        logger.warning(f"Column cleanup skipped: {e}")

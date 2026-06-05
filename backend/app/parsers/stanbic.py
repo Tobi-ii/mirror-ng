@@ -2,7 +2,7 @@ import re
 import logging
 from datetime import datetime
 from typing import Optional
-from .base import BankParser, Transaction, categorize
+from .base import BankParser, ParsedTransaction, categorize
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ class StanbicIBTCParser(BankParser):
     SENDER_PATTERN   = r"stanbicibtc-e-alert@stanbicibtc\.com|stanbicibtc"
     PROVIDES_BALANCE = True
 
-    def parse(self, subject: str, body: str) -> Optional[Transaction]:
+    def parse(self, subject: str, body: str) -> Optional[ParsedTransaction]:
 
         # Transaction type
         type_m = re.search(r"(Debit|Credit)\s+alert\s+details", body, re.IGNORECASE)
@@ -66,7 +66,7 @@ class StanbicIBTCParser(BankParser):
             except Exception:
                 timestamp = self._date(date_str)
 
-        return Transaction(
+        return ParsedTransaction(
             bank          = self.BANK_NAME,
             tx_type       = tx_type,
             amount        = self._amount(amount_m.group(1)),

@@ -2,7 +2,7 @@ import re
 import logging
 from datetime import datetime
 from typing import Optional
-from .base import BankParser, Transaction, categorize
+from .base import BankParser, ParsedTransaction, categorize
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ class WemaBankParser(BankParser):
     SENDER_PATTERN = r"no-reply@alat\.ng|wemabank\.com|no-reply@11054915\.brevosend\.com"
     PROVIDES_BALANCE = True
 
-    def parse(self, subject: str, body: str) -> Optional[Transaction]:
+    def parse(self, subject: str, body: str) -> Optional[ParsedTransaction]:
         # "NGN 2,500.00 has landed" → credit
         # "NGN 2,500.00 has been debited" → debit
         credit_m = re.search(r"NGN\s*([\d,]+\.?\d*)\s+has landed", body, re.IGNORECASE)
@@ -48,7 +48,7 @@ class WemaBankParser(BankParser):
             except Exception:
                 timestamp = self._date(date_m.group(1).strip())
 
-        return Transaction(
+        return ParsedTransaction(
             bank          = self.BANK_NAME,
             tx_type       = tx_type,
             amount        = self._amount(amount_m.group(1)),

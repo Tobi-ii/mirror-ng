@@ -469,17 +469,79 @@ def format_response(result: dict, question: str) -> str:
             return f"In: ₦{result['total_in']:,.2f} | Out: ₦{result['total_out']:,.2f} | Net: ₦{result['net']:,.2f}"
         return json.dumps(result, default=str, indent=2)
 
+# ── Pattern-based Intent Parser (zero LLM dependency) ───────────────
+def parse_intent_via_patterns(message: str) -> dict:
+    """Convert common question patterns to structured intent. No LLM needed."""
+    lower = message.lower().strip()
+
+    # "Balance"
+    if re.search(r'\b(?:balance|how much (?:money|funds) do i have)\b', lower):
+        return {"intent": "insight", "metric": "sum", "field": "amount", "filters": {"tx_type": "all"}, "group_by": "none"}
+
+    # "Biggest / largest / highest single debit"
+    if re.search(r'(?:biggest|largest|highest|most expensive).*(?:debit|purchase|spend|withdrawal)', lower):
+        return {"intent": "lookup", "metric": "max", "field": "amount", "filters": {"tx_type": "debit"}, "order_by": "amount", "order": "desc", "limit": 1}
+
+    # "Biggest / largest / highest single credit"
+    if re.search(r'(?:biggest|largest|highest|most).*(?:credit|income|deposit|received)', lower):
+        return {"intent": "lookup", "metric": "max", "field": "amount", "filters": {"tx_type": "credit"}, "order_by": "amount", "order": "desc", "limit": 1}
+
+    # "Who sent me the most / highest" — grouped by sender
+    if re.search(r'who (?:sent|transferred|paid|gave) me (?:the most|the highest|most money)', lower):
+        return {"intent": "aggregate", "metric": "max", "field": "amount", "filters": {"tx_type": "credit"}, "group_by": "sender", "order_by": "amount", "order": "desc", "limit": 1}
+
+    # "What number did I buy airtime for most?"
+    if re.search(r'(?:what number|who|which number).*airtime|airtime.*(?:most|often|number)', lower):
+        return {"intent": "aggregate", "metric": "sum", "field": "amount", "filters": {"tx_type": "debit", "narration_contains": "airtime"}, "group_by": "recipient", "order_by": "amount", "order": "desc", "limit": 1}
+
+    # "How much did I spend on X?"
+    spend_on = re.search(r'how much (?:did|do) i (?:spend|spent|pay|paid) (?:on|for) (.+)', lower)
+    if spend_on:
+        return {"intent": "aggregate", "metric": "sum", "field": "amount", "filters": {"tx_type": "debit", "narration_contains": spend_on.group(1).strip()}, "group_by": "none"}
+
+    # "How much did I spend this week / month?"
+    if re.search(r'how much (?:did|do) i (?:spend|spent) (?:this|last) (?:week|month)', lower):
+        return {"intent": "aggregate", "metric": "sum", "field": "amount", "filters": {"tx_type": "debit"}, "group_by": "none"}
+
+    # "Forecast" / "Predict"
+    if re.search(r'\b(?:forecast|predict|project(?:ion)?)\b', lower):
+        return {"intent": "insight", "metric": "sum", "field": "amount", "filters": {"tx_type": "debit"}, "group_by": "none"}
+
+    # "Unusual" / "Anomaly"
+    if re.search(r'\b(?:unusual|anomaly|suspicious|strange|weird)\b', lower):
+        return {"intent": "insight", "metric": "count", "field": "amount", "filters": {"tx_type": "debit"}, "group_by": "none"}
+
+    # "Last N transactions" / "Show transactions"
+    last_n = re.search(r'(?:last|latest|recent|show|list)\s*(\d+)?\s*(?:transaction|movement|activity|history)', lower)
+    if last_n:
+        limit = int(last_n.group(1)) if last_n.group(1) else 10
+        return {"intent": "list", "metric": "count", "field": "amount", "filters": {"tx_type": "all"}, "order_by": "date", "order": "desc", "limit": min(limit, 50)}
+
+    # "Transfers"
+    if re.search(r'\b(?:transfer|bank transfer|send money)\b', lower):
+        return {"intent": "aggregate", "metric": "sum", "field": "amount", "filters": {"tx_type": "debit", "narration_contains": "transfer"}, "group_by": "none"}
+
+    # "Biggest expense"
+    if re.search(r'biggest (?:expense|spending|cost|purchase|payment)', lower):
+        return {"intent": "lookup", "metric": "max", "field": "amount", "filters": {"tx_type": "debit"}, "order_by": "amount", "order": "desc", "limit": 1}
+
+    return None
+
 # ── Main Agent Function ────────────────────────────────────────────────
 def run_intent_agent(user_id: str, message: str, history: List[Dict], db_conn) -> Dict:
     """
     Production-safe agent:
-    Layer 1: LLM → JSON intent
+    Layer 1: LLM → JSON intent (fallback: pattern-matching)
     Layer 2: Validate query
     Layer 3: Execute query (SQL only)
     Layer 4: Format response
     """
     
-    # Layer 1: Parse intent
+    raw_json = None
+    model_used = None
+    parsed_intent = None
+    
+    # Layer 1: Try LLM-based intent parsing first
     messages = [
         {"role": "system", "content": INTENT_SYSTEM_PROMPT},
         {"role": "user", "content": message}
@@ -490,7 +552,7 @@ def run_intent_agent(user_id: str, message: str, history: List[Dict], db_conn) -
         response = client.chat.completions.create(
             model=GROQ_MODEL,
             messages=messages,
-            temperature=0.1,  # Very low temperature for deterministic JSON
+            temperature=0.1,
             max_tokens=300
         )
         raw_json = response.choices[0].message.content.strip()
@@ -507,30 +569,34 @@ def run_intent_agent(user_id: str, message: str, history: List[Dict], db_conn) -
             raw_json = response.choices[0].message.content.strip()
             model_used = f"deepseek/{DEEPSEEK_MODEL}"
         except Exception as e:
-            logger.error(f"LLM call failed: {e}")
+            logger.warning(f"LLM call failed, trying pattern fallback: {e}")
+    
+    # If LLM succeeded, parse its JSON output
+    if raw_json:
+        raw_json = re.sub(r'^```(?:json)?\s*', '', raw_json)
+        raw_json = re.sub(r'\s*```$', '', raw_json)
+        try:
+            parsed_intent = json.loads(raw_json)
+        except json.JSONDecodeError:
+            logger.warning(f"LLM returned invalid JSON, trying pattern fallback: {raw_json[:200]}")
+    
+    # Layer 1 fallback: pattern-based intent parsing (no LLM)
+    if parsed_intent is None:
+        pattern_intent = parse_intent_via_patterns(message)
+        if pattern_intent:
+            parsed_intent = pattern_intent
+            model_used = "pattern-fallback"
+            logger.info(f"Pattern fallback matched: {json.dumps(pattern_intent)}")
+        else:
             return {
-                "response": "I couldn't process that request. Please try again.",
+                "response": "I couldn't process that request. Try rephrasing (e.g. 'How much did I spend on transfers?').",
                 "model_used": "none",
                 "intent_parsed": None,
                 "result": None
             }
     
-    # Clean JSON (remove markdown fences if present)
-    raw_json = re.sub(r'^```(?:json)?\s*', '', raw_json)
-    raw_json = re.sub(r'\s*```$', '', raw_json)
-    
     # Layer 2: Validate
-    try:
-        parsed_intent = json.loads(raw_json)
-        validated_query = validate_query(parsed_intent)
-    except json.JSONDecodeError as e:
-        return {
-            "response": "I had trouble understanding that. Could you rephrase?",
-            "model_used": model_used,
-            "intent_parsed": raw_json,
-            "error": f"Invalid JSON: {str(e)}",
-            "result": None
-        }
+    validated_query = validate_query(parsed_intent)
     
     # Layer 3: Execute
     try:

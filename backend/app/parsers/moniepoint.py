@@ -44,7 +44,7 @@ import re
 import logging
 from datetime import datetime
 from typing import Optional
-from .base import BankParser, Transaction, categorize
+from .base import BankParser, ParsedTransaction, categorize
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class MoniepointParser(BankParser):
     SENDER_PATTERN   = r"no-reply@moniepoint\.com|moniepoint"
     PROVIDES_BALANCE = True
 
-    def parse(self, subject: str, body: str) -> Optional[Transaction]:
+    def parse(self, subject: str, body: str) -> Optional[ParsedTransaction]:
 
         # Transaction type
         if re.search(r"credit", subject, re.IGNORECASE):
@@ -123,7 +123,7 @@ class MoniepointParser(BankParser):
 
         last4 = acct_m.group(1)[-4:] if acct_m else None
 
-        return Transaction(
+        return ParsedTransaction(
             bank          = self.BANK_NAME,
             tx_type       = tx_type,
             amount        = self._amount(amount_m.group(1)),

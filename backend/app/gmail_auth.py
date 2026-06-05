@@ -4,8 +4,11 @@ Gmail OAuth2 authentication and email fetching.
 
 import os
 import json
+import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -14,7 +17,7 @@ import email
 from email.utils import parsedate_to_datetime
 
 # Import parser
-from .parsers import parse_email, Transaction, get_parser_for_sender
+from .parsers import parse_email, ParsedTransaction, get_parser_for_sender
 
 class GmailAuth:
     """Handle Gmail OAuth2 authentication"""
@@ -63,7 +66,7 @@ class GmailMirror:
         self.auth = GmailAuth(credentials)
         self.service = build('gmail', 'v1', credentials=self.auth.creds)
     
-    def get_bank_alerts(self, max_results: int = 50, after_date: Optional[str] = None) -> List[Transaction]:
+    def get_bank_alerts(self, max_results: int = 50, after_date: Optional[str] = None) -> List[ParsedTransaction]:
         """
         Fetch recent bank alert emails and parse them
         
@@ -102,7 +105,7 @@ class GmailMirror:
                 maxResults=max_results
             ).execute()
         except Exception as e:
-            print(f"Gmail API error: {e}")
+            logger.error(f"Gmail API error: {e}")
             return []
         
         transactions = []
@@ -114,7 +117,7 @@ class GmailMirror:
         
         return transactions
     
-    def _fetch_and_parse_email(self, msg_id: str) -> Optional[Transaction]:
+    def _fetch_and_parse_email(self, msg_id: str) -> Optional[ParsedTransaction]:
         """Fetch a single email by ID and parse it"""
         try:
             msg_data = self.service.users().messages().get(
@@ -156,7 +159,7 @@ class GmailMirror:
             return None
             
         except Exception as e:
-            print(f"Error fetching email {msg_id}: {e}")
+            logger.error(f"Error fetching email {msg_id}: {e}")
             return None
     
     def _extract_body(self, payload: dict) -> Optional[str]:

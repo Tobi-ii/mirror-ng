@@ -6,7 +6,7 @@ Automatically maps sender domains to their respective parser classes.
 import re
 import logging
 from typing import List, Type, Optional
-from .base import BankParser, Transaction
+from .base import BankParser, ParsedTransaction
 from .sterling import SterlingBankParser
 from .wema import WemaBankParser
 from .opay import OPayParser
@@ -46,7 +46,7 @@ def get_parser_for_sender(sender_email: str) -> Optional[BankParser]:
     logger.debug(f"❌ No parser matched for: '{clean_email}'")
     return None
 
-def parse_email(sender_email: str, subject: str, body: str) -> Optional[Transaction]:
+def parse_email(sender_email: str, subject: str, body: str) -> Optional[ParsedTransaction]:
     """
     Convenience function to parse an email directly using the correct parser.
     """
@@ -60,7 +60,7 @@ def get_all_sender_patterns() -> List[str]:
 
 __all__ = [
     "BankParser",
-    "Transaction",
+    "ParsedTransaction",
     "PARSER_CLASSES",
     "SterlingBankParser",
     "WemaBankParser",
