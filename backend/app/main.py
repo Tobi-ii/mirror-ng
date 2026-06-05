@@ -792,7 +792,7 @@ async def sync_transactions(request: SyncRequest, req: Request):
 
 # ============ AGENT / CHAT ROUTES ============
 
-def _make_local_db(transactions):
+def _make_local_db(transactions, user_id=None):
     """Create an in-memory SQLite DB from local transactions for agent queries."""
     mem = sqlite3.connect(':memory:')
     mem.row_factory = sqlite3.Row
@@ -813,11 +813,12 @@ def _make_local_db(transactions):
         )
     ''')
     for tx in transactions:
+        tx_user_id = user_id or tx.get('user_id')
         mem.execute('''
             INSERT INTO transactions (user_id, bank, tx_type, amount, balance_after, narration, account_last4, timestamp, category)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            tx.get('user_id'), tx.get('bank'), tx.get('tx_type'), tx.get('amount'),
+            tx_user_id, tx.get('bank'), tx.get('tx_type'), tx.get('amount'),
             tx.get('balance'), tx.get('narration'), tx.get('account_last4'),
             tx.get('timestamp'), tx.get('category', 'other')
         ))
@@ -834,7 +835,7 @@ async def agent_chat(request: AgentChatRequest, req: Request):
     is_local = bool(request.local_transactions)
     
     if is_local:
-        mem_db = _make_local_db(request.local_transactions)
+        mem_db = _make_local_db(request.local_transactions, request.user_id)
         try:
             result = run_agent(
                 user_id=request.user_id,
@@ -875,7 +876,7 @@ async def agent_chat_v2(request: AgentChatRequest, req: Request):
     is_local = bool(request.local_transactions)
     
     if is_local:
-        mem_db = _make_local_db(request.local_transactions)
+        mem_db = _make_local_db(request.local_transactions, request.user_id)
         try:
             result = run_intent_agent(
                 user_id=request.user_id,
