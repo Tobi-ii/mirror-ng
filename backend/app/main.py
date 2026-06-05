@@ -46,6 +46,8 @@ from .intent_agent import run_intent_agent
 from .ml.classifier import predict_category, train_classifier
 from .ml.anomaly import detect_anomalies
 from .ml.forecaster import weekly_spend_forecast
+from .ml.merchant import get_top_merchants
+from .ml.recurring import detect_recurring
 
 # Models
 from .models import (
@@ -913,15 +915,54 @@ async def get_insights(user_id: str, req: Request):
         cursor = conn.execute('SELECT * FROM transactions WHERE user_id = ? ORDER BY timestamp ASC', (user_id,))
         transactions = [dict(row) for row in cursor.fetchall()]
         if not transactions:
-            return {"success": True, "anomalies": [], "forecast": [], "message": "Insufficient data"}
+            return {"success": True, "anomalies": [], "forecast": [], "merchants": [], "recurring": [], "message": "Insufficient data"}
         anomalies = [t for t in detect_anomalies(transactions) if t.get('is_anomaly')]
         forecast_data = weekly_spend_forecast(transactions)
+        merchants = get_top_merchants(transactions)
+        recurring = detect_recurring(transactions)
         return JSONResponse({
             'success': True,
             'anomalies': anomalies,
             'forecast': forecast_data,
-            'stats': {'total_anomalies': len(anomalies), 'total_analyzed': len(transactions)}
+            'merchants': merchants,
+            'recurring': recurring,
+            'stats': {
+                'total_anomalies': len(anomalies),
+                'total_analyzed': len(transactions),
+                'total_merchants': len(merchants),
+                'total_recurring': len(recurring),
+            }
         })
+    finally:
+        conn.close()
+
+
+@app.get("/api/insights/merchants/{user_id}")
+async def get_merchant_insights(user_id: str, req: Request):
+    token_user_id = await get_current_user_id(req)
+    if not token_user_id or token_user_id != user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    conn = get_db()
+    try:
+        cursor = conn.execute('SELECT * FROM transactions WHERE user_id = ? ORDER BY timestamp ASC', (user_id,))
+        transactions = [dict(row) for row in cursor.fetchall()]
+        merchants = get_top_merchants(transactions, min_count=1, limit=50)
+        return {"success": True, "merchants": merchants, "total": len(merchants)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/insights/recurring/{user_id}")
+async def get_recurring_payments(user_id: str, req: Request):
+    token_user_id = await get_current_user_id(req)
+    if not token_user_id or token_user_id != user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    conn = get_db()
+    try:
+        cursor = conn.execute('SELECT * FROM transactions WHERE user_id = ? ORDER BY timestamp ASC', (user_id,))
+        transactions = [dict(row) for row in cursor.fetchall()]
+        recurring = detect_recurring(transactions)
+        return {"success": True, "recurring": recurring, "total": len(recurring)}
     finally:
         conn.close()
 
