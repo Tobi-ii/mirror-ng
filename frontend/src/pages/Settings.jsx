@@ -90,6 +90,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
     const aliasRes = await api.getAliases(userId);
     if (aliasRes?.success) setAliases(aliasRes.aliases);
     setDeletingAlias(null);
+    if (onDataChanged) onDataChanged();
   };
 
   // Delete every single alias (used after user confirms "Clear All")
@@ -101,6 +102,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
     setAliases([]);
     setClearingAliases(false);
     setConfirmClear(false);
+    if (onDataChanged) onDataChanged();
   };
 
   // Toggle cloud sync. Shows a confirmation dialog that explains the migration.
