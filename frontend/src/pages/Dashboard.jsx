@@ -556,7 +556,7 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
                               <button
                                 key={cat}
                                 onClick={() => { setDrilldownCategory(cat); setActiveTab('history'); }}
-                                className="flex-shrink-0 w-36 sm:w-44 bg-indigo-500/5 hover:bg-indigo-500/15 border border-white/5 hover:border-indigo-500/30 rounded-xl sm:rounded-2xl p-3 sm:p-4 text-left transition-all group"
+                                className="flex-shrink-0 w-44 sm:w-52 bg-indigo-500/5 hover:bg-indigo-500/15 border border-white/5 hover:border-indigo-500/30 rounded-xl sm:rounded-2xl p-4 sm:p-5 text-left transition-all group"
                               >
                                 <div className="text-[16px] font-black text-indigo-400 group-hover:text-indigo-300 transition-colors">{cat}</div>
                                 <div className="text-[10px] text-slate-500 mt-1.5 font-mono">{txs.length} txns</div>
