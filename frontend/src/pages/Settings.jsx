@@ -5,10 +5,9 @@
 //   • Export/import data
 //   • Log out
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Trash2, LogOut, Pencil, Check, X, AlertTriangle, Sparkles, Cloud, CloudOff, Download, Upload, ChevronDown, ChevronRight, List, Layers } from 'lucide-react';
+import { ArrowLeft, Trash2, LogOut, Pencil, Check, X, Cloud, CloudOff, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { api, setCloudSync, isCloudSync, exportCSV } from '../services/api';
 import { localData } from '../services/localData';
-import TransactionList from '../components/TransactionRow';
 
 export function Settings({ userId, onBack, onLogout, transactions, onDataChanged, onCloudSyncChange }) {
   // ── State ─────────────────────────────────────────────────────────────
@@ -26,7 +25,6 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
   const [migrating, setMigrating] = useState(false);        // true during data migration
   const [showMigrateConfirm, setShowMigrateConfirm] = useState(false); // show migration confirmation dialog
   const [migrateDirection, setMigrateDirection] = useState(null); // 'to-local' or 'to-cloud'
-  const [txViewMode, setTxViewMode] = useState('flat');              // 'flat' or 'grouped' transaction view
 
   // On mount: fetch all data from the API (balances, aliases, cloud sync preference)
   useEffect(() => {
@@ -442,64 +440,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
           </div>
         </section>
 
-        {/* All Transactions: full transaction history with flat/grouped toggle */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">
-              All Transactions ({(transactions || []).length})
-            </h2>
-            <div className="flex bg-white/5 rounded-full p-0.5 border border-white/5">
-              <button onClick={() => setTxViewMode('flat')}
-                className={`text-[8px] font-black uppercase tracking-wider px-3 py-1 rounded-full transition-all flex items-center gap-1.5 ${
-                  txViewMode === 'flat' ? 'bg-white text-black' : 'text-slate-500 hover:text-white'
-                }`}>
-                <List size={10} /> Flat
-              </button>
-              <button onClick={() => setTxViewMode('grouped')}
-                className={`text-[8px] font-black uppercase tracking-wider px-3 py-1 rounded-full transition-all flex items-center gap-1.5 ${
-                  txViewMode === 'grouped' ? 'bg-white text-black' : 'text-slate-500 hover:text-white'
-                }`}>
-                <Layers size={10} /> Grouped
-              </button>
-            </div>
-          </div>
-          <div className="bg-[#0a0c10] border border-white/5 rounded-2xl p-4 sm:p-6 max-h-[600px] overflow-y-auto">
-            {txViewMode === 'flat' ? (
-              <div className="space-y-1">
-                {(transactions || []).length === 0 ? (
-                  <p className="text-slate-600 text-sm italic py-8 text-center">No transactions found.</p>
-                ) : [...(transactions || [])].sort((a, b) => ((b.timestamp || '') > (a.timestamp || '')) ? 1 : -1).map((tx, idx) => (
-                  <div key={tx.id || idx} className="flex items-center justify-between py-2 px-3 hover:bg-white/[0.02] rounded-xl transition-colors group">
-                    <div className="min-w-0 flex-1 mr-3">
-                      <p className="text-[11px] text-slate-200 truncate font-medium">{tx.narration || 'Unnamed'}</p>
-                      <p className="text-[8px] text-slate-600 uppercase tracking-tighter">
-                        {tx.timestamp?.slice(0, 10)} · {tx.bank?.replace(' Bank', '')} · {tx.tx_type}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                        tx.category === 'General' ? 'text-slate-600 bg-slate-500/10' :
-                        tx.category === 'Transfer' ? 'text-indigo-400 bg-indigo-500/10' :
-                        tx.category === 'Food' ? 'text-rose-400 bg-rose-500/10' :
-                        tx.category === 'Data & Airtime' ? 'text-purple-400 bg-purple-500/10' :
-                        'text-slate-300 bg-white/5'
-                      }`}>{tx.category || 'other'}</span>
-                      <span className={`text-[10px] font-mono font-bold ${tx.tx_type === 'debit' ? 'text-rose-400' : 'text-emerald-400'}`}>
-                        {tx.tx_type === 'debit' ? '-' : '+'}₦{Number(tx.amount).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <TransactionList
-                transactions={transactions || []}
-                userId={userId}
-                onAliasUpdate={onDataChanged}
-              />
-            )}
-          </div>
-        </section>
+
 
         {/* Footer */}
         <div className="pt-6 border-t border-white/5 text-center">
