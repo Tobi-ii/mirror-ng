@@ -337,7 +337,7 @@ def execute_tool(tool_name: str, tool_args: Dict, user_id: str, db_conn) -> str:
             return json.dumps({
                 "total_spent": sum(by_category.values()),
                 "by_category": by_category,
-                "transaction_count": len(txs),
+                "transaction_count": len(rows),
                 "period_start": since_date or "all time"
             }, default=str)
 

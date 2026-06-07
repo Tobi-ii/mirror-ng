@@ -222,11 +222,14 @@ def execute_query(query: dict, user_id: str, db_conn) -> dict:
     where_clause = " AND ".join(where_parts)
     
     # Load aliases for narration mapping
-    alias_cursor = db_conn.execute(
-        'SELECT recipient_pattern, display_name, category FROM user_aliases WHERE user_id = ?',
-        (user_id,)
-    )
-    aliases = alias_cursor.fetchall()
+    try:
+        alias_cursor = db_conn.execute(
+            'SELECT recipient_pattern, display_name, category FROM user_aliases WHERE user_id = ?',
+            (user_id,)
+        )
+        aliases = alias_cursor.fetchall()
+    except Exception:
+        aliases = []
     
     def apply_alias(narration):
         """Replace narration with alias display name if matched."""
