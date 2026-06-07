@@ -464,7 +464,7 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
           syncing={syncing}
         />
 
-        <div className="p-4 sm:p-8 pb-32 max-w-[1700px] mx-auto space-y-6 sm:space-y-10">
+        <div className="p-4 sm:p-8 pb-40 max-w-[1700px] mx-auto space-y-6 sm:space-y-10">
 
           {/* Hero: total liquidity, inflow, outflow, account count */}
           <section className="space-y-4 text-center flex flex-col items-center w-full">
