@@ -189,6 +189,20 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
 
   const fmt = (n) => `₦${Number(n).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`;
 
+  // Count real transaction matches per alias display_name
+  const aliasTxCounts = {};
+  if (transactions && aliases) {
+    transactions.forEach(tx => {
+      for (const a of aliases) {
+        if (tx.narration?.toLowerCase().includes(a.recipient_pattern.toLowerCase())) {
+          const key = a.display_name || 'Unnamed';
+          aliasTxCounts[key] = (aliasTxCounts[key] || 0) + 1;
+          break;
+        }
+      }
+    });
+  }
+
   // Show a loader while balances, aliases, and sync preference are loading
   if (loading) {
     return (
@@ -417,7 +431,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
                     <div className="flex items-center gap-2 min-w-0">
                       {isOpen ? <ChevronDown size={12} className="text-slate-500 shrink-0" /> : <ChevronRight size={12} className="text-slate-500 shrink-0" />}
                       <span className="text-xs sm:text-sm font-bold text-indigo-300">{name}</span>
-                      <span className="text-[8px] px-1.5 py-0.5 bg-white/10 rounded-full">{items.length}</span>
+                      <span className="text-[8px] px-1.5 py-0.5 bg-white/10 rounded-full">{aliasTxCounts[name] || 0}</span>
                       {items[0].category && <span className="text-[8px] text-slate-500">· {items[0].category}</span>}
                     </div>
                   </button>
