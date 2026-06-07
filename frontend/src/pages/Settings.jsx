@@ -214,7 +214,7 @@ export function Settings({ userId, onBack, onLogout, transactions, onDataChanged
 
   return (
     <div className="min-h-screen bg-[#050608] text-white">
-      <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 sm:py-10 space-y-8 sm:space-y-12">
+      <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 sm:py-10 space-y-8 sm:space-y-12 pb-32">
         {/* Header: back button, title, logout */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 sm:gap-6 min-w-0">
