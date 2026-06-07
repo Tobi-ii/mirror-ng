@@ -529,59 +529,26 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
 
               {/* Grid layout containing updated stretch alignments */}
               <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-10 lg:gap-16 pt-4 ${auditExpanded ? 'items-start' : 'items-stretch'}`}>
-                {(filteredTx.length > 0 && filteredTx.every(tx => tx.aliased)) ? (
-                  <>
-                    <div className="lg:col-span-2 flex flex-col">
-                      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
-                        <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 text-white">Audit Trail</h3>
-                        <BankFilterBar />
-                      </div>
-                      <div className="bg-[#0a0c10]/40 rounded-2xl sm:rounded-[3.5rem] border border-white/5 p-6 sm:p-10 flex flex-col items-center justify-center text-center flex-1 min-h-[300px]">
-                        <CheckCircle2 size={48} className="text-emerald-500 mb-4 opacity-50" />
-                        <h2 className="text-lg font-black uppercase tracking-wider text-white">All Categorized</h2>
-                        <p className="text-xs text-slate-500 mt-2">Every transaction has been assigned a group.</p>
-                        <p className="mt-4 text-[10px] text-slate-600 font-mono">{filteredTx.length} transactions</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col">
-                      <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 text-white mb-6">Categories</h3>
-                      <div className="flex-1 space-y-3 overflow-y-auto max-h-[500px]">
-                        {Object.entries(
-                          filteredTx.reduce((acc, tx) => {
-                            const cat = tx.category || 'General';
-                            (acc[cat] = acc[cat] || []).push(tx);
-                            return acc;
-                          }, {})
-                        ).sort((a, b) => b[1].length - a[1].length).map(([cat, txs]) => (
-                          <CategoryGroup key={cat} category={cat} transactions={txs} userId={userId} refreshTransactions={refreshTransactions} />
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className={`lg:col-span-2 flex flex-col ${auditExpanded ? '' : 'h-full'}`}>
-                      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
-                        <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 text-white">Audit Trail</h3>
-                        <BankFilterBar />
-                      </div>
-                      <div className={`bg-[#0a0c10]/40 rounded-2xl sm:rounded-[3.5rem] border border-white/5 p-4 sm:p-8 ${auditExpanded ? '' : 'flex-1 h-full'}`}>
-                        <MLGroupView 
-                          transactions={filteredTx}
-                          userId={userId}
-                          onAliasUpdate={refreshTransactions}
-                          onViewChange={setAuditExpanded}
-                        />
-                      </div>
-                    </div>
-                    <div className={`flex flex-col ${auditExpanded ? '' : 'h-full'}`}>
-                      <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 text-white mb-6">Volume Logic</h3>
-                      <div className="flex-1 h-full">
-                        <SpendChart transactions={aliasedTransactions} />
-                      </div>
-                    </div>
-                  </>
-                )}
+                <div className={`lg:col-span-2 flex flex-col ${auditExpanded ? '' : 'h-full'}`}>
+                  <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 text-white">Audit Trail</h3>
+                    <BankFilterBar />
+                  </div>
+                  <div className={`bg-[#0a0c10]/40 rounded-2xl sm:rounded-[3.5rem] border border-white/5 p-4 sm:p-8 ${auditExpanded ? '' : 'flex-1 h-full'}`}>
+                    <MLGroupView 
+                      transactions={filteredTx}
+                      userId={userId}
+                      onAliasUpdate={refreshTransactions}
+                      onViewChange={setAuditExpanded}
+                    />
+                  </div>
+                </div>
+                <div className={`flex flex-col ${auditExpanded ? '' : 'h-full'}`}>
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 text-white mb-6">Volume Logic</h3>
+                  <div className="flex-1 h-full">
+                    <SpendChart transactions={aliasedTransactions} />
+                  </div>
+                </div>
               </div>
             </>
           )}
