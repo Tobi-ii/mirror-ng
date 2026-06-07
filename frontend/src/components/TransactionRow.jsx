@@ -179,7 +179,7 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
     setIsEditing(false);
     setAliasName(tx.narration || '');
     setCategory(tx.category || 'General');
-    if (onToggleSelect) onToggleSelect(tx.id);
+    if (onToggleSelect) onToggleSelect(index);
   };
 
   const canEdit = showEditButton && (isCredit || !isAliased || isAliased);
