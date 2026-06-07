@@ -119,6 +119,7 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
   const [bankFilter, setBankFilter] = useState('all');          // filter transactions by bank
   const [execMode, setExecMode] = useState(false);             // executive dashboard mode
   const [scrolled, setScrolled] = useState(false);              // has user scrolled?
+  const [drilldownCategory, setDrilldownCategory] = useState(null); // category to auto-expand in Audit Feed
   const [isMobile, setIsMobile] = useState(false);              // is the viewport mobile-sized?
   const timerRef = useRef(null);   // tracks the blur-effect hover timer
   const mainRef = useRef(null);     // reference to the scrollable main container
@@ -529,26 +530,72 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
 
               {/* Grid layout containing updated stretch alignments */}
               <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-10 lg:gap-16 pt-4 ${auditExpanded ? 'items-start' : 'items-stretch'}`}>
-                <div className={`lg:col-span-2 flex flex-col ${auditExpanded ? '' : 'h-full'}`}>
-                  <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 text-white">Audit Trail</h3>
-                    <BankFilterBar />
-                  </div>
-                  <div className={`bg-[#0a0c10]/40 rounded-2xl sm:rounded-[3.5rem] border border-white/5 p-4 sm:p-8 ${auditExpanded ? '' : 'flex-1 h-full'}`}>
-                    <MLGroupView 
-                      transactions={filteredTx}
-                      userId={userId}
-                      onAliasUpdate={refreshTransactions}
-                      onViewChange={setAuditExpanded}
-                    />
-                  </div>
-                </div>
-                <div className={`flex flex-col ${auditExpanded ? '' : 'h-full'}`}>
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 text-white mb-6">Volume Logic</h3>
-                  <div className="flex-1 h-full">
-                    <SpendChart transactions={aliasedTransactions} />
-                  </div>
-                </div>
+                {(filteredTx.length > 0 && filteredTx.every(tx => tx.aliased)) ? (
+                  <>
+                    <div className="lg:col-span-2 flex flex-col">
+                      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
+                        <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 text-white">Audit Trail</h3>
+                        <BankFilterBar />
+                      </div>
+                      <div className="bg-[#0a0c10]/40 rounded-2xl sm:rounded-[3.5rem] border border-white/5 p-4 sm:p-8 flex flex-col gap-4">
+                        <div className="text-center">
+                          <CheckCircle2 size={32} className="text-emerald-500 mx-auto mb-2 opacity-50" />
+                          <h2 className="text-sm font-black uppercase tracking-wider text-white/80">All Categorized</h2>
+                          <p className="text-[11px] text-slate-500 mt-1">{filteredTx.length} transactions · click a category to drill down</p>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                          {Object.entries(
+                            filteredTx.reduce((acc, tx) => {
+                              const cat = tx.category || 'General';
+                              (acc[cat] = acc[cat] || []).push(tx);
+                              return acc;
+                            }, {})
+                          ).sort((a, b) => b[1].length - a[1].length).map(([cat, txs]) => {
+                            const total = txs.reduce((s, t) => s + t.amount, 0);
+                            return (
+                              <button
+                                key={cat}
+                                onClick={() => { setDrilldownCategory(cat); setActiveTab('history'); }}
+                                className="flex-shrink-0 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-[11px] font-bold text-indigo-300 hover:bg-indigo-500/20 hover:border-indigo-500/40 transition-all whitespace-nowrap"
+                              >
+                                {cat} · {txs.length} · ₦{total.toLocaleString('en-NG')}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                    <div className={`flex flex-col ${auditExpanded ? '' : 'h-full'}`}>
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 text-white mb-6">Volume Logic</h3>
+                      <div className="flex-1 h-full">
+                        <SpendChart transactions={aliasedTransactions} />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className={`lg:col-span-2 flex flex-col ${auditExpanded ? '' : 'h-full'}`}>
+                      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
+                        <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 text-white">Audit Trail</h3>
+                        <BankFilterBar />
+                      </div>
+                      <div className={`bg-[#0a0c10]/40 rounded-2xl sm:rounded-[3.5rem] border border-white/5 p-4 sm:p-8 ${auditExpanded ? '' : 'flex-1 h-full'}`}>
+                        <MLGroupView 
+                          transactions={filteredTx}
+                          userId={userId}
+                          onAliasUpdate={refreshTransactions}
+                          onViewChange={setAuditExpanded}
+                        />
+                      </div>
+                    </div>
+                    <div className={`flex flex-col ${auditExpanded ? '' : 'h-full'}`}>
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 text-white mb-6">Volume Logic</h3>
+                      <div className="flex-1 h-full">
+                        <SpendChart transactions={aliasedTransactions} />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </>
           )}
@@ -578,8 +625,8 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
 }
 
 // ── Category Group (for drill-down in fully-aliased audit feed) ─────
-function CategoryGroup({ category, transactions, userId, refreshTransactions }) {
-  const [expanded, setExpanded] = useState(false);
+function CategoryGroup({ category, transactions, userId, refreshTransactions, startExpanded }) {
+  const [expanded, setExpanded] = useState(startExpanded || false);
 
   const total = transactions.reduce((s, t) => s + t.amount, 0);
 
@@ -636,7 +683,7 @@ function CategoryGroup({ category, transactions, userId, refreshTransactions }) 
                   {/* Right: Category groups with drill-down */}
                   <div className="lg:col-span-3 space-y-3 max-h-[600px] overflow-y-auto">
                     {Object.entries(categoryGroups).sort((a, b) => b[1].length - a[1].length).map(([cat, txs]) => (
-                      <CategoryGroup key={cat} category={cat} transactions={txs} userId={userId} refreshTransactions={refreshTransactions} />
+                      <CategoryGroup key={cat} category={cat} transactions={txs} userId={userId} refreshTransactions={refreshTransactions} startExpanded={cat === drilldownCategory} />
                     ))}
                   </div>
                 </div>
