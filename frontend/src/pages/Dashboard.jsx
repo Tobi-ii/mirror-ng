@@ -2,10 +2,10 @@
 // charts, agent chat, insights, settings. All the core functionality lives here.
 import { useState, useRef, useEffect } from 'react';
 import { 
-  LayoutDashboard, History, LogOut, Brain, MessageSquare, Settings as LucideSettings 
+  LayoutDashboard, History, LogOut, Brain, MessageSquare, Settings as LucideSettings, List, Layers 
 } from 'lucide-react';
 import { api } from '../services/api';
-import { getMLSuggestion } from '../components/TransactionRow';
+import TransactionList, { getMLSuggestion } from '../components/TransactionRow';
 
 import FloatingNavItem from "../components/FloatingNavItem";
 import BankCard from "../components/BankCard";
@@ -117,6 +117,8 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
   const [hoverLabel, setHoverLabel] = useState('');             // text shown during blur
   const [bankFilter, setBankFilter] = useState('all');          // filter transactions by bank
   const [execMode, setExecMode] = useState(false);             // executive dashboard mode
+  const [auditTxMode, setAuditTxMode] = useState('flat');       // 'flat' or 'grouped' in audit feed
+  const [auditCategory, setAuditCategory] = useState('all');    // filter by category in audit feed
   const [scrolled, setScrolled] = useState(false);              // has user scrolled?
   const [isMobile, setIsMobile] = useState(false);              // is the viewport mobile-sized?
   const timerRef = useRef(null);   // tracks the blur-effect hover timer
@@ -561,12 +563,63 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
                 <h3 className="text-xs font-black uppercase tracking-[0.3em] opacity-20 text-white">Audit Feed</h3>
                 <BankFilterBar />
               </div>
-              <div className="bg-[#0a0c10]/40 border border-white/5 rounded-2xl sm:rounded-[3.5rem] p-4 sm:p-8 max-w-5xl mx-auto min-h-[420px]">
-                <MLGroupView 
-                  transactions={filteredTx}
-                  userId={userId}
-                  onAliasUpdate={refreshTransactions}
-                />
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                {/* Left: Category Breakdown */}
+                <div className="lg:col-span-2">
+                  <SpendChart transactions={filteredTx} />
+                </div>
+                {/* Right: Transaction List with Flat/Grouped toggle */}
+                <div className="lg:col-span-3 bg-[#0a0c10]/40 border border-white/5 rounded-2xl sm:rounded-[2rem] p-4 sm:p-6 min-h-[420px]">
+                  <div className="flex items-center justify-end mb-4">
+                    <div className="flex bg-white/5 rounded-full p-0.5 border border-white/5">
+                      <button onClick={() => setAuditTxMode('flat')}
+                        className={`text-[8px] font-black uppercase tracking-wider px-3 py-1 rounded-full transition-all flex items-center gap-1.5 ${
+                          auditTxMode === 'flat' ? 'bg-white text-black' : 'text-slate-500 hover:text-white'
+                        }`}>
+                        <List size={10} /> Flat
+                      </button>
+                      <button onClick={() => setAuditTxMode('grouped')}
+                        className={`text-[8px] font-black uppercase tracking-wider px-3 py-1 rounded-full transition-all flex items-center gap-1.5 ${
+                          auditTxMode === 'grouped' ? 'bg-white text-black' : 'text-slate-500 hover:text-white'
+                        }`}>
+                        <Layers size={10} /> Grouped
+                      </button>
+                    </div>
+                  </div>
+                  {auditTxMode === 'flat' ? (
+                    <div className="max-h-[600px] overflow-y-auto">
+                      <TransactionList
+                        transactions={filteredTx}
+                        userId={userId}
+                        onAliasUpdate={refreshTransactions}
+                      />
+                    </div>
+                  ) : (
+                    <div className="max-h-[600px] overflow-y-auto space-y-4">
+                      {Object.entries(
+                        filteredTx.reduce((acc, tx) => {
+                          const cat = tx.category || 'General';
+                          (acc[cat] = acc[cat] || []).push(tx);
+                          return acc;
+                        }, {})
+                      ).sort((a, b) => b[1].length - a[1].length).map(([cat, txs]) => (
+                        <div key={cat}>
+                          <div className="flex items-center justify-between mb-2 px-1">
+                            <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">{cat}</h4>
+                            <span className="text-[9px] text-slate-600 font-mono">
+                              {txs.length} tx · ₦{txs.reduce((s, t) => s + t.amount, 0).toLocaleString('en-NG')}
+                            </span>
+                          </div>
+                          <TransactionList
+                            transactions={txs}
+                            userId={userId}
+                            onAliasUpdate={refreshTransactions}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
