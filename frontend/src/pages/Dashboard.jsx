@@ -543,7 +543,7 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
                           <h2 className="text-sm font-black uppercase tracking-wider text-white/80">All Categorized</h2>
                           <p className="text-[11px] text-slate-500 mt-1">{filteredTx.length} transactions · click a category to drill down</p>
                         </div>
-                        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
                           {Object.entries(
                             filteredTx.reduce((acc, tx) => {
                               const cat = tx.category || 'General';
@@ -556,9 +556,11 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
                               <button
                                 key={cat}
                                 onClick={() => { setDrilldownCategory(cat); setActiveTab('history'); }}
-                                className="flex-shrink-0 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-[11px] font-bold text-indigo-300 hover:bg-indigo-500/20 hover:border-indigo-500/40 transition-all whitespace-nowrap"
+                                className="flex-shrink-0 w-36 sm:w-44 bg-indigo-500/5 hover:bg-indigo-500/15 border border-white/5 hover:border-indigo-500/30 rounded-xl sm:rounded-2xl p-3 sm:p-4 text-left transition-all group"
                               >
-                                {cat} · {txs.length} · ₦{total.toLocaleString('en-NG')}
+                                <div className="text-[16px] font-black text-indigo-400 group-hover:text-indigo-300 transition-colors">{cat}</div>
+                                <div className="text-[10px] text-slate-500 mt-1.5 font-mono">{txs.length} txns</div>
+                                <div className="text-xs font-bold text-white/70 mt-1 font-mono">₦{total.toLocaleString('en-NG')}</div>
                               </button>
                             );
                           })}
