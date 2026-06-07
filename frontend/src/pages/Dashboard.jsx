@@ -465,7 +465,7 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
           syncing={syncing}
         />
 
-        <div className="p-4 sm:p-8 pb-40 max-w-[1700px] mx-auto space-y-6 sm:space-y-10">
+        <div className="p-4 sm:p-8 pb-48 max-w-[1700px] mx-auto space-y-6 sm:space-y-10">
 
           {/* Hero: total liquidity, inflow, outflow, account count */}
           <section className="space-y-4 text-center flex flex-col items-center w-full">
@@ -696,7 +696,7 @@ function CategoryGroup({ category, transactions, userId, refreshTransactions, st
       </main>
 
       {/* Navigation */}
-      <nav className={`fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-0.5 sm:gap-3 p-1.5 sm:p-4 bg-[#0a0c10]/80 backdrop-blur-3xl border border-white/10 rounded-full shadow-2xl transition-all duration-500 ${scrolled ? 'opacity-100' : 'opacity-20 hover:opacity-100'}`}>
+      <nav className={`fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-0.5 sm:gap-3 p-1.5 sm:p-4 bg-[#0a0c10]/80 backdrop-blur-3xl border border-white/10 rounded-full shadow-2xl transition-all duration-500 ${showSettings ? 'opacity-0 pointer-events-none' : scrolled ? 'opacity-100' : 'opacity-20 hover:opacity-100'}`}>
         <FloatingNavItem 
           icon={<LayoutDashboard size={18} />} 
           label="The Mirror"

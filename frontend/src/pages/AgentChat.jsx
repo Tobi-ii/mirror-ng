@@ -138,7 +138,7 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
       )}
 
       {/* Messages: the chat thread — user messages on right, assistant on left */}
-      <div className="flex-1 overflow-y-auto space-y-3 sm:space-y-4 pr-1 sm:pr-2">
+      <div className="flex-1 overflow-y-auto space-y-3 sm:space-y-4 pr-1 sm:pr-2 pb-24">
         {messages.map((msg, i) => (
           <div key={i} className={`flex gap-2 sm:gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
             {/* Avatar */}
