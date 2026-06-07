@@ -63,6 +63,7 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
           tool_calls: res.tool_calls_made || []
         }])
         setModelUsed(res.model_used)
+        setLoading(false)
         return
       }
     } catch (err) {
