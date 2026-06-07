@@ -2,10 +2,11 @@
 // charts, agent chat, insights, settings. All the core functionality lives here.
 import { useState, useRef, useEffect } from 'react';
 import { 
-  LayoutDashboard, History, LogOut, Brain, MessageSquare, Settings as LucideSettings 
+  LayoutDashboard, History, LogOut, Brain, MessageSquare, Settings as LucideSettings,
+  ChevronDown, ChevronRight, CheckCircle2, FolderOpen 
 } from 'lucide-react';
 import { api } from '../services/api';
-import { getMLSuggestion } from '../components/TransactionRow';
+import TransactionList, { getMLSuggestion } from '../components/TransactionRow';
 
 import FloatingNavItem from "../components/FloatingNavItem";
 import BankCard from "../components/BankCard";
@@ -555,21 +556,93 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
           {activeTab === 'ask' && <AgentChat userId={userId} sinceDate={sinceDate} untilDate={untilDate} />}
           {activeTab === 'insights' && <InsightsPanel userId={userId} />}
 
-          {activeTab === 'history' && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <h3 className="text-xs font-black uppercase tracking-[0.3em] opacity-20 text-white">Audit Feed</h3>
-                <BankFilterBar />
+          {activeTab === 'history' && (() => {
+            const allAliased = filteredTx.length > 0 && filteredTx.every(tx => tx.aliased);
+
+            if (!allAliased) {
+              return (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <h3 className="text-xs font-black uppercase tracking-[0.3em] opacity-20 text-white">Audit Feed</h3>
+                    <BankFilterBar />
+                  </div>
+                  <div className="bg-[#0a0c10]/40 border border-white/5 rounded-2xl sm:rounded-[3.5rem] p-4 sm:p-8 max-w-5xl mx-auto min-h-[420px]">
+                    <MLGroupView 
+                      transactions={filteredTx}
+                      userId={userId}
+                      onAliasUpdate={refreshTransactions}
+                    />
+                  </div>
+    </div>
+  );
+}
+
+// ── Category Group (for drill-down in fully-aliased audit feed) ─────
+function CategoryGroup({ category, transactions, userId, refreshTransactions }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const total = transactions.reduce((s, t) => s + t.amount, 0);
+
+  return (
+    <div className="bg-white/[0.02] border border-white/5 rounded-2xl overflow-hidden">
+      <button onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 hover:bg-white/[0.03] transition-all">
+        <div className="flex items-center gap-2 min-w-0">
+          {expanded ? <ChevronDown size={12} className="text-slate-500 shrink-0" /> : <ChevronRight size={12} className="text-slate-500 shrink-0" />}
+          <FolderOpen size={14} className="text-indigo-400 shrink-0" />
+          <span className="text-xs sm:text-sm font-bold text-indigo-300">{category}</span>
+          <span className="text-[8px] px-1.5 py-0.5 bg-white/10 rounded-full text-slate-400">{transactions.length}</span>
+        </div>
+        <span className="text-[10px] text-slate-500 font-mono">
+          ₦{total.toLocaleString('en-NG')}
+        </span>
+      </button>
+      {expanded && (
+        <div className="px-2 pb-3 space-y-1 border-t border-white/5 pt-2 max-h-[400px] overflow-y-auto">
+          <TransactionList
+            transactions={transactions}
+            userId={userId}
+            onAliasUpdate={refreshTransactions}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+            const categoryGroups = {};
+            filteredTx.forEach(tx => {
+              const cat = tx.category || 'General';
+              if (!categoryGroups[cat]) categoryGroups[cat] = [];
+              categoryGroups[cat].push(tx);
+            });
+
+            return (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <h3 className="text-xs font-black uppercase tracking-[0.3em] opacity-20 text-white">Audit Feed</h3>
+                  <BankFilterBar />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                  {/* Left: All Categorized summary */}
+                  <div className="lg:col-span-2 bg-[#0a0c10]/40 border border-white/5 rounded-2xl sm:rounded-[2rem] p-6 sm:p-8 flex flex-col items-center justify-center text-center min-h-[420px]">
+                    <CheckCircle2 size={48} className="text-emerald-500 mb-4 opacity-50" />
+                    <h2 className="text-lg font-black uppercase tracking-wider text-white">All Categorized</h2>
+                    <p className="text-xs text-slate-500 mt-2">Every transaction has been assigned a group.</p>
+                    <p className="mt-6 text-[10px] text-slate-600 font-mono">
+                      {filteredTx.length} transactions
+                    </p>
+                  </div>
+                  {/* Right: Category groups with drill-down */}
+                  <div className="lg:col-span-3 space-y-3 max-h-[600px] overflow-y-auto">
+                    {Object.entries(categoryGroups).sort((a, b) => b[1].length - a[1].length).map(([cat, txs]) => (
+                      <CategoryGroup key={cat} category={cat} transactions={txs} userId={userId} refreshTransactions={refreshTransactions} />
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="bg-[#0a0c10]/40 border border-white/5 rounded-2xl sm:rounded-[3.5rem] p-4 sm:p-8 max-w-5xl mx-auto min-h-[420px]">
-                <MLGroupView 
-                  transactions={filteredTx}
-                  userId={userId}
-                  onAliasUpdate={refreshTransactions}
-                />
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </main>
 
