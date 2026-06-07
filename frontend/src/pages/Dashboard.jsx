@@ -450,7 +450,7 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
       <main 
         ref={mainRef} 
         onScroll={handleScroll}
-        className={`h-screen overflow-y-auto will-change-transform ${
+        className={`h-screen overflow-y-auto will-change-transform pb-36 ${
           isBlurred ? 'scale-[0.92] opacity-5 transition-all duration-700' : 'scale-100 opacity-100'
         }`}
         style={{ backfaceVisibility: 'hidden' }}
@@ -465,7 +465,7 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
           syncing={syncing}
         />
 
-        <div className="p-4 sm:p-8 pb-48 max-w-[1700px] mx-auto space-y-6 sm:space-y-10">
+        <div className="p-4 sm:p-8 max-w-[1700px] mx-auto space-y-6 sm:space-y-10">
 
           {/* Hero: total liquidity, inflow, outflow, account count */}
           <section className="space-y-4 text-center flex flex-col items-center w-full">

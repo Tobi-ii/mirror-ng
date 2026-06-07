@@ -107,7 +107,7 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-100px)] sm:h-[calc(100vh-120px)] max-w-3xl mx-auto px-0 sm:px-0">
+    <div className="flex flex-col h-[calc(100vh-180px)] sm:h-[calc(100vh-200px)] max-w-3xl mx-auto px-0 sm:px-0">
 
       {/* Header: title, model status indicator, and reset button */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
