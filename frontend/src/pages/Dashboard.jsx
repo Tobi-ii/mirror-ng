@@ -304,6 +304,7 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
   };
 
   const handleInitialize = async (isSkip, accounts = []) => {
+    await api.clearUserData(userId);
     if (isSkip) { setShowOnboarding(false); refreshTransactions(); return; }
     setSyncing(true);
     try {

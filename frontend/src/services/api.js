@@ -430,6 +430,14 @@ export const api = {
   },
 
   /**
+   * Clear all local data for a user (transactions, balances, aliases)
+   */
+  clearUserData: async (userId) => {
+    await localData.clearUser(userId);
+    return { success: true };
+  },
+
+  /**
    * Generate AI-powered suggestions for transaction aliases
    */
   generateAliasSuggestions: async (userId, narrations) => {
