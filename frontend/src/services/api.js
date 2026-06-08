@@ -393,10 +393,12 @@ export const api = {
       const existingIdx = aliases.findIndex(a => a.recipient_pattern === data.recipient_pattern);
       if (existingIdx >= 0) {
         aliases[existingIdx] = { ...aliases[existingIdx], display_name: data.display_name, category: data.category || 'General' };
+        if (data.exact_match !== undefined) aliases[existingIdx].exact_match = data.exact_match;
         await localData.saveAliases(userId, aliases);
         return { success: true, alias: aliases[existingIdx] };
       }
       const newAlias = { id: Date.now(), ...data };
+      if (!data.exact_match) delete newAlias.exact_match;
       aliases.push(newAlias);
       await localData.saveAliases(userId, aliases);
       return { success: true, alias: newAlias };

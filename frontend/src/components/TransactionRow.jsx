@@ -5,6 +5,21 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 
+// Returns count of non-aliased transactions whose narration contains `pattern`,
+// excluding any narrations in `excludeNarrations` (used to avoid counting the
+// transaction(s) the user is intentionally aliasing).
+function countOtherMatches(allTransactions, pattern, excludeNarrations = []) {
+  const p = pattern.toLowerCase();
+  return allTransactions.filter(tx => {
+    if (tx.aliased) return false;
+    const nar = (tx.original_narration || tx.narration || '').toLowerCase();
+    if (!nar.includes(p)) return false;
+    // Skip the transaction(s) being aliased
+    if (excludeNarrations.some(ex => nar === ex.toLowerCase())) return false;
+    return true;
+  }).length;
+}
+
 const BANK_COLORS = {
   'Sterling Bank': {
     border: 'border-l-purple-600',
@@ -103,7 +118,7 @@ function groupSimilarTransactions(transactions) {
 }
 
 // Individual Transaction Component - now editable for all types (including aliased and credits)
-function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true, selected, selectionCount, onToggleSelect }) {
+function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true, selected, selectionCount, onToggleSelect, allTransactions }) {
   const [isEditing, setIsEditing] = useState(false);
   const [aliasName, setAliasName] = useState(tx?.narration || '');
   const [category, setCategory] = useState(tx?.category || 'General');
@@ -150,10 +165,25 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
     
     setIsSaving(true);
     try {
+      const pattern = originalNarration.slice(0, 60);
+      // Check if this pattern matches other non-aliased transactions
+      const otherCount = allTransactions
+        ? countOtherMatches(allTransactions, pattern, [originalNarration])
+        : 0;
+      
+      let exactMatch = false;
+      if (otherCount > 0) {
+        const msg = `"${aliasName.trim()}" matches ${otherCount} other unaliased transaction${otherCount > 1 ? 's' : ''} too.\n\nAlias all of them as "${aliasName.trim()}"?`;
+        if (!window.confirm(msg)) {
+          exactMatch = true;
+        }
+      }
+
       await api.saveAlias(userId, {
-        recipient_pattern: originalNarration.slice(0, 60),
+        recipient_pattern: pattern,
         display_name: aliasName,
-        category: category
+        category: category,
+        exact_match: exactMatch || undefined
       });
       
       setIsAliased(true);
@@ -312,7 +342,7 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
 }
 
 // Category Group for Aliased Transactions
-function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, isExpanded, onToggle }) {
+function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, isExpanded, onToggle, allTransactions }) {
   const [expanded, setExpanded] = useState(isExpanded);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
@@ -331,11 +361,25 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
   const handleAliasAll = async () => {
     setIsSaving(true);
     try {
+      const patterns = transactions.map(tx =>
+        (tx.original_narration || tx.narration).slice(0, 60)
+      );
+      const allExclude = patterns.map(p => p.toLowerCase());
+      const hasSpread = patterns.some(p =>
+        allTransactions ? countOtherMatches(allTransactions, p, allExclude) > 0 : false
+      );
+      let exactMatch = false;
+      if (hasSpread) {
+        exactMatch = !window.confirm(
+          `"${category}" matches transactions outside this group too.\n\nAlias all matching transactions as "${category}"?`
+        );
+      }
       for (const tx of transactions) {
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: category,
-          category
+          category,
+          exact_match: exactMatch || undefined
         });
       }
       if (onAliasUpdate) onAliasUpdate();
@@ -350,12 +394,28 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
     if (!batchName.trim()) return;
     setIsSaving(true);
     try {
+      const patterns = [];
+      for (const [idx, tx] of transactions.entries()) {
+        if (!selectedIds.has(idx)) continue;
+        patterns.push((tx.original_narration || tx.narration).slice(0, 60));
+      }
+      const allExclude = patterns.map(p => p.toLowerCase());
+      const hasSpread = patterns.some(p =>
+        allTransactions ? countOtherMatches(allTransactions, p, allExclude) > 0 : false
+      );
+      let exactMatch = false;
+      if (hasSpread) {
+        exactMatch = !window.confirm(
+          `"${batchName.trim()}" matches transactions outside this selection too.\n\nAlias all matching transactions as "${batchName.trim()}"?`
+        );
+      }
       for (const [idx, tx] of transactions.entries()) {
         if (!selectedIds.has(idx)) continue;
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: batchName,
-          category: batchCategory
+          category: batchCategory,
+          exact_match: exactMatch || undefined
         });
       }
       setShowForm(false);
@@ -434,6 +494,7 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
                selected={selectedIds.has(idx)}
                selectionCount={selectedIds.size}
                onToggleSelect={toggleSelection}
+               allTransactions={allTransactions}
              />
            ))}
          </div>
@@ -443,7 +504,7 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
  }
 
 // Grouped Transaction Component with Batch Alias (for ML suggested groups)
-function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isExpanded, onToggle }) {
+function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isExpanded, onToggle, allTransactions }) {
   const [batchName, setBatchName] = useState(group?.display_name || '');
   const [batchCategory, setBatchCategory] = useState(group?.category || 'General');
   const [isSaving, setIsSaving] = useState(false);
@@ -467,11 +528,25 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
     if (!name.trim()) return;
     setIsSaving(true);
     try {
+      const patterns = group.transactions.map(tx =>
+        (tx.original_narration || tx.narration).slice(0, 60)
+      );
+      const allExclude = patterns.map(p => p.toLowerCase());
+      const hasSpread = patterns.some(p =>
+        allTransactions ? countOtherMatches(allTransactions, p, allExclude) > 0 : false
+      );
+      let exactMatch = false;
+      if (hasSpread) {
+        exactMatch = !window.confirm(
+          `"${name}" matches transactions outside this group too.\n\nAlias all matching transactions as "${name}"?`
+        );
+      }
       for (const tx of group.transactions) {
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: name,
-          category: group.category || 'General'
+          category: group.category || 'General',
+          exact_match: exactMatch || undefined
         });
       }
       setIsAliased(true);
@@ -487,12 +562,28 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
     if (!batchName.trim()) return;
     setIsSaving(true);
     try {
+      const patterns = [];
+      for (const [idx, tx] of group.transactions.entries()) {
+        if (!selectedIds.has(idx)) continue;
+        patterns.push((tx.original_narration || tx.narration).slice(0, 60));
+      }
+      const allExclude = patterns.map(p => p.toLowerCase());
+      const hasSpread = patterns.some(p =>
+        allTransactions ? countOtherMatches(allTransactions, p, allExclude) > 0 : false
+      );
+      let exactMatch = false;
+      if (hasSpread) {
+        exactMatch = !window.confirm(
+          `"${batchName.trim()}" matches transactions outside this selection too.\n\nAlias all matching transactions as "${batchName.trim()}"?`
+        );
+      }
       for (const [idx, tx] of group.transactions.entries()) {
         if (!selectedIds.has(idx)) continue;
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: batchName,
-          category: batchCategory
+          category: batchCategory,
+          exact_match: exactMatch || undefined
         });
       }
       setIsAliased(true);
@@ -574,6 +665,7 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
               selected={selectedIds.has(idx)}
               selectionCount={selectedIds.size}
               onToggleSelect={toggleSelection}
+              allTransactions={allTransactions}
             />
           ))}
         </div>
@@ -632,12 +724,28 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
     const txs = flatSection === 'pending' ? pendingTransactions : creditTransactions;
     setFlatBatchSaving(true);
     try {
+      // Collect patterns and check for spread
+      const patterns = txs
+        .filter((_, idx) => flatBatchIds.size === 0 || flatBatchIds.has(idx))
+        .map(tx => (tx.original_narration || tx.narration).slice(0, 60));
+      const allExclude = patterns.map(p => p.toLowerCase());
+      // Find any pattern that would match a transaction outside this batch
+      const hasSpread = patterns.some(p =>
+        countOtherMatches(transactions, p, allExclude) > 0
+      );
+      let exactMatch = false;
+      if (hasSpread) {
+        exactMatch = !window.confirm(
+          `"${flatBatchName.trim()}" matches transactions outside this group too.\n\nAlias all matching transactions as "${flatBatchName.trim()}"?`
+        );
+      }
       for (const [idx, tx] of txs.entries()) {
         if (flatBatchIds.size > 0 && !flatBatchIds.has(idx)) continue;
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: flatBatchName,
-          category: flatBatchCategory
+          category: flatBatchCategory,
+          exact_match: exactMatch || undefined
         });
       }
       setFlatShowForm(false);
@@ -732,6 +840,7 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
               onAliasUpdate={onAliasUpdate}
               isExpanded={expandedGroups.aliasedCategories[category] ?? true}
               onToggle={() => toggleCategory(category)}
+              allTransactions={transactions}
             />
           ))}
         </div>
@@ -765,6 +874,7 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   onAliasUpdate={onAliasUpdate}
                   isExpanded={true}
                   onToggle={() => {}}
+                  allTransactions={transactions}
                 />
               ))}
             </div>
@@ -828,6 +938,7 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                    selected={flatBatchIds.has(idx) && flatSection === 'pending'}
                   selectionCount={flatBatchIds.size}
                   onToggleSelect={toggleFlatSelection('pending')}
+                  allTransactions={transactions}
                 />
               ))}
             </div>
@@ -891,6 +1002,7 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                    selected={flatBatchIds.has(idx) && flatSection === 'credits'}
                   selectionCount={flatBatchIds.size}
                   onToggleSelect={toggleFlatSelection('credits')}
+                  allTransactions={transactions}
                 />
               ))}
             </div>

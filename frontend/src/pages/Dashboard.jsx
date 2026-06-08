@@ -164,9 +164,14 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
   // "POS DEBIT WDF*UBER TRIP" → "Uber"). Also applies ML suggestions.
   const applyAliases = (txList) => {
     return txList.map(tx => {
-      const match = aliases.length > 0 ? aliases.find(a =>
-        tx.narration?.toLowerCase().includes(a.recipient_pattern.toLowerCase())
-      ) : null;
+      const match = aliases.length > 0 ? aliases.find(a => {
+        const pattern = a.recipient_pattern?.toLowerCase();
+        if (!pattern) return false;
+        if (a.exact_match) {
+          return tx.narration?.toLowerCase() === pattern;
+        }
+        return tx.narration?.toLowerCase().includes(pattern);
+      }) : null;
       if (match) {
         return { 
           ...tx, 
