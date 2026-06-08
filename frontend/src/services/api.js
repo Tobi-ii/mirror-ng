@@ -390,6 +390,12 @@ export const api = {
   saveAlias: async (userId, data) => {
     if (!_cloudSync) {
       const aliases = await localData.getAliases(userId);
+      const existingIdx = aliases.findIndex(a => a.recipient_pattern === data.recipient_pattern);
+      if (existingIdx >= 0) {
+        aliases[existingIdx] = { ...aliases[existingIdx], display_name: data.display_name, category: data.category || 'General' };
+        await localData.saveAliases(userId, aliases);
+        return { success: true, alias: aliases[existingIdx] };
+      }
       const newAlias = { id: Date.now(), ...data };
       aliases.push(newAlias);
       await localData.saveAliases(userId, aliases);
