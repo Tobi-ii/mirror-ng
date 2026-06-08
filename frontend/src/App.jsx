@@ -53,6 +53,7 @@ function App() {
     if (tokenData?.access_token) {
       setToken(tokenData.access_token);
     }
+    localStorage.removeItem(`mirror_onboarded_${fullUser.user_id}`);
     // Ask the server whether this user has cloud sync turned on
     try {
       const res = await api.getCloudSync(fullUser.user_id);
