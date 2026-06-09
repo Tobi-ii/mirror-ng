@@ -776,12 +776,17 @@ async def sync_transactions(request: SyncRequest, req: Request):
             logger.info(f"Cloud sync: stored {stored} new transactions")
         else:
             logger.info(f"Local sync: returning {len(new_transactions)} parsed transactions (no DB storage)")
+            # Detect gaps from in-memory transactions
+            tx_accounts = [{"bank": tx.bank, "account_last4": tx.account_last4} for tx in new_transactions]
+            gaps, total_accounts = detect_onboarding_gaps(tx_accounts, set(), request.user_id)
 
         return JSONResponse({
             "success": True,
             "new_transactions": [tx.to_dict() for tx in new_transactions],
             "total_synced": len(new_transactions),
-            "cloud_sync": cloud_sync
+            "cloud_sync": cloud_sync,
+            "gaps": gaps if not cloud_sync else None,
+            "total_accounts": total_accounts if not cloud_sync else None,
         })
     except Exception as e:
         logger.error(f"Sync error: {e}")
@@ -882,7 +887,9 @@ async def agent_chat_v2(request: AgentChatRequest, req: Request):
                 user_id=request.user_id,
                 message=request.message,
                 history=request.history,
-                db_conn=mem_db
+                db_conn=mem_db,
+                since_date=request.since_date,
+                until_date=request.until_date
             )
             return JSONResponse({"success": True, **result})
         finally:
@@ -894,7 +901,9 @@ async def agent_chat_v2(request: AgentChatRequest, req: Request):
                 user_id=request.user_id,
                 message=request.message,
                 history=request.history,
-                db_conn=conn
+                db_conn=conn,
+                since_date=request.since_date,
+                until_date=request.until_date
             )
             return JSONResponse({"success": True, **result})
         except Exception as e:
@@ -1126,36 +1135,58 @@ async def delete_alias(user_id: str, alias_id: int, req: Request):
 
 # ============ ONBOARDING GAPS ENDPOINTS ============
 
+def detect_onboarding_gaps(tx_accounts, anchored_accounts, user_id=None):
+    """Detect which accounts need configuration (account number or anchor balance).
+    
+    Args:
+        tx_accounts: List of dicts with 'bank' and 'account_last4' keys
+        anchored_accounts: Set of (bank, account_last4) tuples that already have anchors
+        user_id: Optional user_id for DB query fallback
+    
+    Returns:
+        (gaps_list, total_accounts_count)
+    """
+    from .parsers import PARSER_CLASSES
+    provides_balance_map = {}
+    for ParserClass in PARSER_CLASSES:
+        p = ParserClass()
+        provides_balance_map[p.BANK_NAME] = getattr(p, 'PROVIDES_BALANCE', False)
+
+    gaps = []
+    seen = set()
+
+    for acct in tx_accounts:
+        bank  = acct['bank']
+        last4 = acct['account_last4']
+        key   = (bank, last4)
+
+        if key in seen:
+            continue
+        seen.add(key)
+
+        provides_bal = provides_balance_map.get(bank, False)
+
+        needs_account_number = not last4
+        needs_anchor = (not provides_bal) and (key not in anchored_accounts)
+
+        if needs_account_number or needs_anchor:
+            gaps.append({
+                "bank":                 bank,
+                "account_last4":        last4,
+                "needs_account_number": needs_account_number,
+                "needs_anchor":         needs_anchor,
+                "provides_balance":     provides_bal,
+            })
+
+    return gaps, len(seen)
+
 @app.get("/api/onboarding-gaps/{user_id}")
 async def get_onboarding_gaps(user_id: str, req: Request):
     token_user_id = await get_current_user_id(req)
     if not token_user_id or token_user_id != user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    """
-    Detect which accounts are missing data after sync.
-
-    Logic:
-    - needs_account_number: account_last4 is NULL in transactions
-    - needs_anchor: parser does NOT provide balance in emails
-                    AND no anchor has been set by the user
-
-    Banks with PROVIDES_BALANCE=True (Sterling, Wema, OPay) get their
-    balance directly from the email — no anchor needed. We only ask for
-    their account number if it's missing.
-
-    Banks with PROVIDES_BALANCE=False need the user to provide an
-    opening balance so Mirror can calculate running totals.
-    """
     conn = get_db()
     try:
-        # Build map of bank -> provides_balance from parser registry
-        from .parsers import PARSER_CLASSES
-        provides_balance_map = {}
-        for ParserClass in PARSER_CLASSES:
-            p = ParserClass()
-            provides_balance_map[p.BANK_NAME] = getattr(p, 'PROVIDES_BALANCE', False)
-
-        # All distinct bank/account combos from synced transactions
         cursor = conn.execute('''
             SELECT DISTINCT bank, account_last4
             FROM transactions
@@ -1163,7 +1194,6 @@ async def get_onboarding_gaps(user_id: str, req: Request):
         ''', (user_id,))
         tx_accounts = [dict(r) for r in cursor.fetchall()]
 
-        # Accounts that already have an anchor set
         cursor = conn.execute('''
             SELECT DISTINCT bank, account_last4
             FROM account_balances
@@ -1171,34 +1201,8 @@ async def get_onboarding_gaps(user_id: str, req: Request):
         ''', (user_id,))
         anchored = {(r['bank'], r['account_last4']) for r in cursor.fetchall()}
 
-        gaps = []
-        seen = set()
-
-        for acct in tx_accounts:
-            bank  = acct['bank']
-            last4 = acct['account_last4']
-            key   = (bank, last4)
-
-            if key in seen:
-                continue
-            seen.add(key)
-
-            provides_bal = provides_balance_map.get(bank, False)
-
-            needs_account_number = not last4
-            # Only need anchor if the email doesn't carry a balance
-            needs_anchor = (not provides_bal) and (key not in anchored)
-
-            if needs_account_number or needs_anchor:
-                gaps.append({
-                    "bank":                 bank,
-                    "account_last4":        last4,
-                    "needs_account_number": needs_account_number,
-                    "needs_anchor":         needs_anchor,
-                    "provides_balance":     provides_bal,
-                })
-
-        return JSONResponse({"success": True, "gaps": gaps})
+        gaps, total = detect_onboarding_gaps(tx_accounts, anchored, user_id)
+        return JSONResponse({"success": True, "gaps": gaps, "total_accounts": total})
     except Exception as e:
         logger.error(f"Error getting onboarding gaps: {e}")
         raise HTTPException(status_code=500, detail="Failed to get onboarding gaps")

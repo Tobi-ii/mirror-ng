@@ -434,7 +434,7 @@ export default function ExecutiveDashboard({ transactions }) {
       <div className="sticky top-0 z-40 bg-[#050608]/90 backdrop-blur-xl pt-3 sm:pt-6 pb-3 sm:pb-6 -mx-4 sm:-mx-6 px-4 sm:px-6 border-b border-white/5 space-y-3 sm:space-y-6">
         <div>
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-black uppercase italic tracking-tighter text-white">Executive View</h1>
-          <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.2em] sm:tracking-[0.4em] text-slate-600 mt-0.5 sm:mt-1">
+          <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.2em] sm:tracking-[0.4em] text-white/60 mt-0.5 sm:mt-1">
             Data Intelligence Layer · {transactions.length} transactions analyzed
           </p>
         </div>
@@ -442,9 +442,9 @@ export default function ExecutiveDashboard({ transactions }) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           {kpis.map((kpi, i) => (
             <div key={i} className="bg-[#0a0c10] border border-white/5 rounded-xl sm:rounded-[2rem] p-3 sm:p-5 space-y-0.5 sm:space-y-1">
-              <p className="text-[7px] sm:text-[9px] font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] text-slate-600 truncate">{kpi.label}</p>
+              <p className="text-[7px] sm:text-[9px] font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] text-white/70 truncate">{kpi.label}</p>
               <p className={`text-base sm:text-xl font-black tabular-nums ${kpi.color} truncate`}>{kpi.value}</p>
-              <p className="text-[7px] sm:text-[9px] text-slate-700 truncate">{kpi.sub}</p>
+              <p className="text-[7px] sm:text-[9px] text-white/50 truncate">{kpi.sub}</p>
             </div>
           ))}
         </div>
@@ -455,7 +455,7 @@ export default function ExecutiveDashboard({ transactions }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
         <div className="bg-[#0a0c10] border border-white/5 rounded-2xl sm:rounded-[2rem] lg:rounded-[2.5rem] p-4 sm:p-6 lg:p-8 space-y-4 sm:space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
-            <h3 className="text-[9px] sm:text-xs font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] text-slate-500">Spend Breakdown</h3>
+            <h3 className="text-[9px] sm:text-xs font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] text-white/70">Spend Breakdown</h3>
             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
               <TogglePill value={flowType} setValue={(v) => { setFlowType(v); setSelectedSlice(null); setBreakdownTxs(null); }}
                 options={[{ value: 'debit', label: 'Out' }, { value: 'credit', label: 'In' }]} />
@@ -488,11 +488,11 @@ export default function ExecutiveDashboard({ transactions }) {
 
         <div className="bg-[#0a0c10] border border-white/5 rounded-2xl sm:rounded-[2rem] lg:rounded-[2.5rem] p-4 sm:p-6 lg:p-8 space-y-4 sm:space-y-6">
           <div>
-            <h3 className="text-[9px] sm:text-xs font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] text-slate-500 mb-3 sm:mb-4">Daily Spend Trend</h3>
+            <h3 className="text-[9px] sm:text-xs font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] text-white/70 mb-3 sm:mb-4">Daily Spend Trend</h3>
             <TrendLine transactions={transactions} />
           </div>
           <div className="pt-8 border-t border-white/5">
-            <h3 className="text-[9px] sm:text-xs font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] text-slate-500 mb-3 sm:mb-4">Daily Credit vs Debit</h3>
+            <h3 className="text-[9px] sm:text-xs font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] text-white/70 mb-3 sm:mb-4">Daily Credit vs Debit</h3>
             <CreditDebitBars transactions={transactions} />
           </div>
         </div>
@@ -501,7 +501,7 @@ export default function ExecutiveDashboard({ transactions }) {
       {/* Row 2: Volume Analysis with Drill-Down */}
       <div className="bg-[#0a0c10] border border-white/5 rounded-2xl sm:rounded-[2rem] lg:rounded-[2.5rem] p-4 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 w-full">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-[9px] sm:text-xs font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] text-slate-500">
+          <h3 className="text-[9px] sm:text-xs font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] text-white/70">
             Volume Analysis
           </h3>
           <TogglePill value={recipientType} setValue={setRecipientType}

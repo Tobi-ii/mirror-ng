@@ -13,7 +13,6 @@ const BANK_COLORS = {
   'default':       'from-slate-700 to-slate-900',
 };
 
-// Map gradient classes to standard background classes for the circles in the picker
 const COLOR_OPTIONS = [
   { gradient: 'from-emerald-500 to-teal-600', bg: 'bg-emerald-500' },
   { gradient: 'from-purple-600 to-indigo-800', bg: 'bg-purple-600' },
@@ -28,19 +27,16 @@ const COLOR_OPTIONS = [
 
 export default function BankCard({
   bank, balance, account_last4, last_updated,
-  totalCredit = 0, totalDebit = 0, onClick
+  totalCredit = 0, totalDebit = 0, onClick,
+  colorIndex = null, allBankColors = {}, onColorChange
 }) {
-  const defaultColor = BANK_COLORS[bank] || BANK_COLORS['default'];
-  
-  const [selectedColor, setSelectedColor] = useState(() => {
-    const found = COLOR_OPTIONS.find(o => o.gradient === defaultColor);
-    return found ? found.gradient : COLOR_OPTIONS[0].gradient;
-  });
+  const defaultGradient = BANK_COLORS[bank] || BANK_COLORS['default'];
+  const resolvedIndex = colorIndex !== null ? colorIndex : COLOR_OPTIONS.findIndex(o => o.gradient === defaultGradient);
+  const effectiveIndex = resolvedIndex >= 0 ? resolvedIndex : 0;
 
   const [showPicker, setShowPicker] = useState(false);
   const pickerRef = useRef(null);
 
-  // Close the color picker if the user clicks anywhere else
   useEffect(() => {
     function handleClickOutside(event) {
       if (pickerRef.current && !pickerRef.current.contains(event.target)) {
@@ -54,15 +50,19 @@ export default function BankCard({
   }, [showPicker]);
 
   const togglePicker = (e) => {
-    e.stopPropagation(); // Avoid triggering the main card filter onClick
+    e.stopPropagation();
     setShowPicker(!showPicker);
   };
 
-  const handleColorSelect = (e, gradient) => {
-    e.stopPropagation(); // Avoid triggering the main card filter onClick
-    setSelectedColor(gradient);
+  const handleColorSelect = (e, idx) => {
+    e.stopPropagation();
+    if (onColorChange) onColorChange(bank, idx);
     setShowPicker(false);
   };
+
+  const usedByOthers = Object.entries(allBankColors)
+    .filter(([otherBank]) => otherBank !== bank)
+    .map(([, idx]) => idx);
 
   const fmt = (n) =>
     new Intl.NumberFormat('en-NG', {
@@ -79,7 +79,7 @@ export default function BankCard({
     <div className="relative group w-[220px] sm:w-[260px] md:w-[300px] lg:w-[340px] shrink-0">
       <div
         onClick={onClick}
-        className={`rounded-2xl sm:rounded-[2.5rem] bg-gradient-to-br ${selectedColor} text-white shadow-2xl flex relative overflow-hidden transition-all duration-500 ease-in-out group-hover:-translate-y-2 group-hover:shadow-indigo-500/20 active:scale-[0.97] cursor-pointer h-40 sm:h-44 md:h-48 lg:h-52`}
+        className={`rounded-2xl sm:rounded-[2.5rem] bg-gradient-to-br ${COLOR_OPTIONS[effectiveIndex].gradient} text-white shadow-2xl flex relative overflow-hidden transition-all duration-500 ease-in-out group-hover:-translate-y-2 group-hover:shadow-indigo-500/20 active:scale-[0.97] cursor-pointer h-40 sm:h-44 md:h-48 lg:h-52`}
       >
         {/* Ambient glow */}
         <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl group-hover:bg-white/20 transition-all duration-1000 pointer-events-none" />
@@ -107,18 +107,22 @@ export default function BankCard({
               {/* ── Horizontal Colour Picker ── */}
               {showPicker && (
                 <div className="absolute left-14 top-0 flex items-center gap-1.5 bg-black/40 backdrop-blur-xl border border-white/10 px-3 py-2 rounded-2xl shadow-xl animate-in fade-in slide-in-from-left-2 duration-200 z-20 max-w-[140px] sm:max-w-[180px] md:max-w-[220px] overflow-x-auto scrollbar-none">
-                  {COLOR_OPTIONS.map((option, idx) => (
-                    <button
-                      key={idx}
-                      onClick={(e) => handleColorSelect(e, option.gradient)}
-                      type="button"
-                      className={`w-5 h-5 rounded-full shrink-0 transition-all duration-150 hover:scale-125 active:scale-90 border ${
-                        selectedColor === option.gradient 
-                          ? 'border-white scale-110 shadow-md ring-2 ring-white/20' 
-                          : 'border-white/30'
-                      } ${option.bg}`}
-                    />
-                  ))}
+                  {COLOR_OPTIONS.map((option, idx) => {
+                    const taken = usedByOthers.includes(idx);
+                    return (
+                      <button
+                        key={idx}
+                        onClick={(e) => { if (!taken) handleColorSelect(e, idx); }}
+                        type="button"
+                        disabled={taken}
+                        className={`w-5 h-5 rounded-full shrink-0 transition-all duration-150 hover:scale-125 active:scale-90 border ${
+                          idx === effectiveIndex
+                            ? 'border-white scale-110 shadow-md ring-2 ring-white/20'
+                            : 'border-white/30'
+                        } ${option.bg} ${taken ? 'opacity-20 cursor-not-allowed hover:scale-100' : ''}`}
+                      />
+                    );
+                  })}
                 </div>
               )}
             </div>

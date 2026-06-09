@@ -1,6 +1,6 @@
 // Dashboard.jsx — The main screen after login. Shows balances, transactions,
 // charts, agent chat, insights, settings. All the core functionality lives here.
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   LayoutDashboard, History, LogOut, Brain, MessageSquare, Settings as LucideSettings,
   ChevronDown, ChevronRight, CheckCircle2, FolderOpen 
@@ -113,6 +113,8 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem(`mirror_onboarded_${userId}`));
   const [showSettings, setShowSettings] = useState(false);
   const [showGaps, setShowGaps] = useState(false);            // show banking gaps after sync
+  const [inlineGaps, setInlineGaps] = useState(null);         // gaps from local-sync response
+  const [inlineTotalAccounts, setInlineTotalAccounts] = useState(0);
   const [activeTab, setActiveTab] = useState('dashboard');    // 'dashboard' | 'ask' | 'insights' | 'history'
   const [isBlurred, setIsBlurred] = useState(false);           // blur overlay for nav hover effect
   const [hoverLabel, setHoverLabel] = useState('');             // text shown during blur
@@ -146,6 +148,19 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
     }
   }, [userId]);
 
+  const [bankColors, setBankColors] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`mirror_bank_colors_${userId}`) || '{}'); }
+    catch { return {}; }
+  });
+
+  const saveBankColor = useCallback((bank, idx) => {
+    setBankColors(prev => {
+      const next = { ...prev, [bank]: idx };
+      localStorage.setItem(`mirror_bank_colors_${userId}`, JSON.stringify(next));
+      return next;
+    });
+  }, [userId]);
+
   const [sinceDate, setSinceDate] = useState('2026-01-01');  // start of the audit window
   const [untilDate, setUntilDate] = useState(null);            // end date (null = no end)
 
@@ -162,17 +177,22 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
   // ── Apply aliases to transactions ─────────────────────────────────────
   // Replaces raw bank narration text with user-friendly names (e.g.
   // "POS DEBIT WDF*UBER TRIP" → "Uber"). Also applies ML suggestions.
+  // Does NOT override ML-grouped transactions — alias only applies to
+  // uncategorized transactions so ML groups aren't silently consumed.
   const applyAliases = (txList) => {
     return txList.map(tx => {
       const match = aliases.length > 0 ? aliases.find(a => {
         const pattern = a.recipient_pattern?.toLowerCase();
         if (!pattern) return false;
         if (a.exact_match) {
-          return tx.narration?.toLowerCase() === pattern;
+          return tx.narration?.toLowerCase().slice(0, 60) === pattern;
         }
         return tx.narration?.toLowerCase().includes(pattern);
       }) : null;
       if (match) {
+        // Don't override ML-grouped transactions — alias stays out of their groups
+        const ml = getMLSuggestion(tx.original_narration || tx.narration || '');
+        if (ml && tx.category !== 'General') return tx;
         return { 
           ...tx, 
           narration: match.display_name, 
@@ -219,28 +239,62 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
 
   // Build a list of banks that have transaction data (synced from email alerts).
   // Their balance is calculated as: manual anchor balance OR net credit/debit sum.
-  const syncedBanks = [...new Set(auditFilteredTransactions.map(t => `${t.bank}::${normLast4(t.account_last4)}`))].map(key => {
+  // Coalesce same-bank duplicate entries where one has '0000' (stale sentinel).
+  const coalesceBank = (entries) => {
+    const byBank = {};
+    for (const e of entries) {
+      const key = `${e.bank}::${normLast4(e.account_last4)}`;
+      const keyReal = `${e.bank}::real`;
+      if (normLast4(e.account_last4) !== '0000') {
+        byBank[key] = e;
+        delete byBank[`${e.bank}::0000`];
+      } else if (!byBank[keyReal]) {
+        byBank[key] = e;
+      }
+    }
+    return Object.values(byBank);
+  };
+  const syncedBanks = coalesceBank([...new Set(auditFilteredTransactions.map(t => `${t.bank}::${normLast4(t.account_last4)}`))].map(key => {
     const [bank, last4] = key.split('::');
     const bankTxs = auditFilteredTransactions.filter(t => t.bank === bank && normLast4(t.account_last4) === last4);
     const existingBal = dedupedBalances.find(b => `${b.bank}::${normLast4(b.account_last4)}` === key);
+    // Fall back to any balance for this bank (stale last4 mismatch, but balance value is real)
+    const bal = existingBal || dedupedBalances.find(b => b.bank === bank);
     const net = bankTxs.reduce((s, t) => t.tx_type === 'credit' ? s + t.amount : s - t.amount, 0);
     return {
       bank,
-      account_last4: existingBal?.account_last4 || bankTxs[0]?.account_last4 || '????',
-      balance: existingBal ? existingBal.balance : net,
-      last_updated: existingBal?.last_updated || bankTxs[0]?.timestamp,
+      account_last4: bankTxs[0]?.account_last4 || bal?.account_last4 || '????',
+      balance: bal ? bal.balance : net,
+      last_updated: bal?.last_updated || bankTxs[0]?.timestamp,
       isSynced: true
     };
-  });
+  }));
 
   // Banks that have a manual balance entry but no synced transactions
-  const manualBanks = dedupedBalances
-    .filter(b => !syncedBanks.find(s => s.bank === b.bank && normLast4(s.account_last4) === normLast4(b.account_last4)))
-    .map(b => ({ ...b, isSynced: false }));
+  // Also drop stale '0000' entries when the bank has a real last4 in synced transactions
+  const manualBanks = coalesceBank(dedupedBalances
+    .filter(b => {
+      if (syncedBanks.find(s => s.bank === b.bank && normLast4(s.account_last4) === normLast4(b.account_last4))) return false;
+      if (normLast4(b.account_last4) === '0000' && syncedBanks.some(s => s.bank === b.bank)) return false;
+      return true;
+    })
+    .map(b => ({ ...b, isSynced: false })));
 
   // Final combined list: synced banks first, then manual-only banks
+  const usedColorSet = new Set();
   const displayBalances = [...syncedBanks, ...manualBanks]
-    .sort((a, b) => a.isSynced === b.isSynced ? 0 : a.isSynced ? -1 : 1);
+    .sort((a, b) => a.isSynced === b.isSynced ? 0 : a.isSynced ? -1 : 1)
+    .map(b => {
+      let ci = bankColors[b.bank];
+      if (ci === undefined) {
+        for (let i = 0; i < 9; i++) {
+          if (!usedColorSet.has(i)) { ci = i; break; }
+        }
+        if (ci === undefined) ci = 0;
+      }
+      usedColorSet.add(ci);
+      return { ...b, colorIndex: ci };
+    });
 
   // ── Derived stats (use aliased transactions) ─────────────────────────
   const aggregateLiquidity = displayBalances.reduce((s, b) => s + (b.balance || 0), 0);
@@ -332,6 +386,11 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
         
         // Show gaps modal if new transactions were synced
         if (res.total_synced > 0) {
+          if (res.gaps) {
+            // Cloud sync off — gaps came inline from sync response
+            setInlineGaps(res.gaps);
+            setInlineTotalAccounts(res.total_accounts || 0);
+          }
           setShowGaps(true);
         }
       }
@@ -361,6 +420,11 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
         
         // Show gaps modal if new transactions were synced
         if (res.total_synced > 0) {
+          if (res.gaps) {
+            // Cloud sync off — gaps came inline from sync response
+            setInlineGaps(res.gaps);
+            setInlineTotalAccounts(res.total_accounts || 0);
+          }
           setShowGaps(true);
         }
       }
@@ -420,15 +484,14 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
       )}
 
       {/* OnboardingGapsModal */}
-      <OnboardingGapsModal
-        userId={userId}
-        isOpen={showGaps}
-        onClose={() => setShowGaps(false)}
-        onComplete={() => { 
-          setShowGaps(false); 
-          refreshTransactions();
-        }}
-      />
+        <OnboardingGapsModal
+          userId={userId}
+          isOpen={showGaps}
+          inlineGaps={inlineGaps}
+          inlineTotalAccounts={inlineTotalAccounts}
+          onClose={() => { setShowGaps(false); setInlineGaps(null); }}
+          onComplete={() => { setShowGaps(false); setInlineGaps(null); refreshTransactions(); }}
+        />
 
       {showOnboarding && (
         <SessionOnboarding
@@ -526,6 +589,9 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
                       onClick={() => setBankFilter(prev => prev === b.bank ? 'all' : b.bank)}
                       totalCredit={aliasedTransactions.filter(t => t.bank === b.bank && t.tx_type === 'credit').reduce((s, t) => s + t.amount, 0)}
                       totalDebit={aliasedTransactions.filter(t => t.bank === b.bank && t.tx_type === 'debit').reduce((s, t) => s + t.amount, 0)}
+                      colorIndex={b.colorIndex}
+                      allBankColors={bankColors}
+                      onColorChange={saveBankColor}
                     />
                   ))}
                   <AddManualCard onAdd={handleAddAccount} />

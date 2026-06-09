@@ -13,6 +13,12 @@ from openai import OpenAI
 logger = logging.getLogger(__name__)
 
 # ── LLM Clients ────────────────────────────────────────────────────────
+def get_gemini_client():
+    return OpenAI(
+        api_key=os.getenv("GEMINI_API_KEY"),
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
+
 def get_groq_client():
     return OpenAI(
         api_key=os.getenv("GROQ_API_KEY"),
@@ -25,6 +31,7 @@ def get_deepseek_client():
         base_url="https://api.deepseek.com/v1"
     )
 
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 DEEPSEEK_MODEL = "deepseek-chat"
 
@@ -437,31 +444,51 @@ Use ₦ for naira. Be direct. Flag anything unusual.
 
 DATA: {data}
 USER QUESTION: {question}
+PREVIOUS RESPONSE: {previous}
 
 RULES:
-- Use the data provided. Do not invent numbers.
+- Use ONLY the data provided. Do not invent numbers.
+- If PREVIOUS RESPONSE contains a number, the current answer must be consistent.
 - Keep it under 3 sentences unless asked for detail.
 - If data shows unusual patterns, mention it."""
 
-def format_response(result: dict, question: str) -> str:
+def format_response(result: dict, question: str, previous_response: str = "") -> str:
     """Optionally use LLM to format the response. Falls back to structured text."""
     try:
-        client = get_groq_client()
+        client = get_gemini_client()
         response = client.chat.completions.create(
-            model=GROQ_MODEL,
+            model=GEMINI_MODEL,
             messages=[{
                 "role": "user",
                 "content": FORMATTER_PROMPT.format(
                     data=json.dumps(result, default=str, indent=2),
-                    question=question
+                    question=question,
+                    previous=previous_response
                 )
             }],
             temperature=0.3,
             max_tokens=300
         )
         return response.choices[0].message.content
-    except Exception as e:
-        logger.warning(f"Formatter LLM failed, using fallback: {e}")
+    except Exception:
+        try:
+            client = get_groq_client()
+            response = client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[{
+                    "role": "user",
+                    "content": FORMATTER_PROMPT.format(
+                        data=json.dumps(result, default=str, indent=2),
+                        question=question,
+                        previous=previous_response
+                    )
+                }],
+                temperature=0.3,
+                max_tokens=300
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.warning(f"Formatter LLM failed, using fallback: {e}")
         # Fallback formatting
         if result.get("type") == "single_value":
             return f"{result['metric'].title()}: ₦{result['value']:,.2f}"
@@ -531,7 +558,9 @@ def parse_intent_via_patterns(message: str) -> dict:
     return None
 
 # ── Main Agent Function ────────────────────────────────────────────────
-def run_intent_agent(user_id: str, message: str, history: List[Dict], db_conn) -> Dict:
+def run_intent_agent(user_id: str, message: str, history: List[Dict], db_conn,
+                     since_date: Optional[str] = None,
+                     until_date: Optional[str] = None) -> Dict:
     """
     Production-safe agent:
     Layer 1: LLM → JSON intent (fallback: pattern-matching)
@@ -545,34 +574,71 @@ def run_intent_agent(user_id: str, message: str, history: List[Dict], db_conn) -
     parsed_intent = None
     
     # Layer 1: Try LLM-based intent parsing first
+    # Include conversation history so follow-ups ("list", "this week") have context
+    # Inject default date range so the LLM applies it when the question doesn't specify dates
+    date_context = ""
+    if since_date:
+        date_context += f"\nDEFAULT DATE RANGE: from {since_date}"
+        if until_date:
+            date_context += f" to {until_date}"
+        date_context += "\nApply these as date_from/date_to defaults when the user's question does not specify explicit dates."
+    
+    history_context = ""
+    if history and len(history) >= 2:
+        recent = history[-6:]  # last 3 turns (each turn = user + assistant)
+        history_context = "CONVERSATION SO FAR:\n"
+        for msg in recent:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "user":
+                history_context += f"User: {content}\n"
+            elif role == "assistant":
+                history_context += f"Assistant: (previously answered)\n"
+        history_context += "\nCURRENT QUESTION: " + message
+    
+    system_content = INTENT_SYSTEM_PROMPT
+    if date_context:
+        system_content += "\n\n" + date_context
+    
     messages = [
-        {"role": "system", "content": INTENT_SYSTEM_PROMPT},
-        {"role": "user", "content": message}
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": history_context if history_context else message}
     ]
     
     try:
-        client = get_groq_client()
+        client = get_gemini_client()
         response = client.chat.completions.create(
-            model=GROQ_MODEL,
+            model=GEMINI_MODEL,
             messages=messages,
             temperature=0.1,
             max_tokens=300
         )
         raw_json = response.choices[0].message.content.strip()
-        model_used = f"groq/{GROQ_MODEL}"
+        model_used = f"gemini/{GEMINI_MODEL}"
     except Exception:
         try:
-            client = get_deepseek_client()
+            client = get_groq_client()
             response = client.chat.completions.create(
-                model=DEEPSEEK_MODEL,
+                model=GROQ_MODEL,
                 messages=messages,
                 temperature=0.1,
                 max_tokens=300
             )
             raw_json = response.choices[0].message.content.strip()
-            model_used = f"deepseek/{DEEPSEEK_MODEL}"
-        except Exception as e:
-            logger.warning(f"LLM call failed, trying pattern fallback: {e}")
+            model_used = f"groq/{GROQ_MODEL}"
+        except Exception:
+            try:
+                client = get_deepseek_client()
+                response = client.chat.completions.create(
+                    model=DEEPSEEK_MODEL,
+                    messages=messages,
+                    temperature=0.1,
+                    max_tokens=300
+                )
+                raw_json = response.choices[0].message.content.strip()
+                model_used = f"deepseek/{DEEPSEEK_MODEL}"
+            except Exception as e:
+                logger.warning(f"LLM call failed, trying pattern fallback: {e}")
     
     # If LLM succeeded, parse its JSON output
     if raw_json:
@@ -614,7 +680,13 @@ def run_intent_agent(user_id: str, message: str, history: List[Dict], db_conn) -
         }
     
     # Layer 4: Format
-    response_text = format_response(result, message)
+    previous_response = ""
+    if history:
+        for msg in reversed(history):
+            if msg.get("role") == "assistant" and msg.get("content"):
+                previous_response = msg["content"][:200]
+                break
+    response_text = format_response(result, message, previous_response)
     
     return {
         "response": response_text,

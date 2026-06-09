@@ -12,6 +12,7 @@ export default function InsightsPanel({ userId }) {
     }).finally(() => setLoading(false))
   }, [userId])
 
+  const [hoveredIdx, setHoveredIdx] = useState(null)
   const fmt = (n) => `₦${Number(n).toLocaleString('en-NG', { minimumFractionDigits: 0 })}`
 
   if (loading) return (
@@ -56,30 +57,78 @@ export default function InsightsPanel({ userId }) {
           </div>
         </div>
 
-        {/* Bar chart */}
+        {/* Line chart */}
         {forecast.forecast?.length > 0 && (
-          <div className="space-y-1.5 sm:space-y-2">
-            <p className="text-[8px] sm:text-[10px] text-slate-600 uppercase tracking-widest mb-2 sm:mb-4">Projected Daily Spend</p>
-            {forecast.forecast.map((f, i) => {
-              const pct = maxSpend > 0 ? (f.predicted_spend / maxSpend) * 100 : 0
-              const date = new Date(f.date + 'T00:00:00')
-              return (
-                <div key={i} className="flex items-center gap-1.5 sm:gap-3">
-                  <span className="text-[8px] sm:text-[10px] text-slate-500 w-12 sm:w-16 font-mono flex-shrink-0">
-                    {date.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric' })}
-                  </span>
-                  <div className="flex-1 h-4 sm:h-6 bg-white/5 rounded overflow-hidden">
-                    <div
-                      className="h-full bg-indigo-600/70 rounded transition-all duration-700"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                  <span className="text-[8px] sm:text-[10px] text-slate-400 font-mono w-16 sm:w-20 text-right flex-shrink-0">
-                    {fmt(f.predicted_spend)}
-                  </span>
+          <div>
+            <p className="text-[8px] sm:text-[10px] text-slate-600 uppercase tracking-widest mb-3 sm:mb-5">Projected Daily Spend</p>
+            <svg viewBox="0 0 600 130" className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
+              {(() => {
+                const m = maxSpend || 1
+                const chartW = 546, chartH = 91
+                const padL = 42, padT = 15
+                const baseY = padT + chartH
+                const step = chartW / (forecast.forecast.length - 1 || 1)
+                return (
+                  <>
+                    {[0, 0.5, 1].map((t, i) => {
+                      const y = padT + chartH * (1 - t)
+                      return (
+                        <line key={i} x1={padL} y1={y} x2={padL + chartW} y2={y} stroke="rgba(255,255,255,0.04)" strokeWidth={1} />
+                      )
+                    })}
+                    {(() => {
+                      const pts = forecast.forecast.map((f, i) => {
+                        const x = padL + i * step
+                        const y = baseY - (f.predicted_spend / m) * chartH
+                        return `${i === 0 ? 'M' : 'L'}${x},${y}`
+                      }).join(' ')
+                      return (
+                        <>
+                          <defs>
+                            <linearGradient id="forecastGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#818cf8" stopOpacity="0.2" />
+                              <stop offset="100%" stopColor="#818cf8" stopOpacity="0" />
+                            </linearGradient>
+                          </defs>
+                          <polygon points={`${padL},${baseY} ${forecast.forecast.map((f, i) => {
+                            const x = padL + i * step
+                            const y = baseY - (f.predicted_spend / m) * chartH
+                            return `${x},${y}`
+                          }).join(' ')} ${padL + (forecast.forecast.length - 1) * step},${baseY}`} fill="url(#forecastGrad)" />
+                          <polyline points={pts} fill="none" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                          {forecast.forecast.map((f, i) => {
+                            const x = padL + i * step
+                            const y = baseY - (f.predicted_spend / m) * chartH
+                            const date = new Date(f.date + 'T00:00:00')
+                            return (
+                              <g key={i}>
+                                <circle cx={x} cy={y} r={hoveredIdx === i ? 5 : 3} fill={hoveredIdx === i ? "#fff" : "#818cf8"} className="transition-all" />
+                                <text x={x} y={baseY + 16} textAnchor="middle" fill={hoveredIdx === i ? "#fff" : "#475569"} fontSize={7} fontWeight="700" fontFamily="monospace">
+                                  {date.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric' })}
+                                </text>
+                                <rect x={x - 10} y={0} width={20} height={130} fill="transparent" onMouseEnter={() => setHoveredIdx(i)} onMouseLeave={() => setHoveredIdx(null)} className="cursor-crosshair" />
+                              </g>
+                            )
+                          })}
+                        </>
+                      )
+                    })()}
+                  </>
+                )
+              })()}
+            </svg>
+            {hoveredIdx !== null && forecast.forecast[hoveredIdx] && (
+              <div className="pointer-events-none bg-[#0a0c10] border border-white/10 px-2.5 py-1.5 rounded text-[10px] font-black text-white shadow-xl -translate-x-1/2 -translate-y-full whitespace-nowrap z-10"
+                style={{
+                  marginTop: -8,
+                  marginLeft: `${42 + hoveredIdx * (546 / (forecast.forecast.length - 1 || 1))}px`,
+                }}>
+                <div className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">
+                  {new Date(forecast.forecast[hoveredIdx].date + 'T00:00:00').toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric' })}
                 </div>
-              )
-            })}
+                <div className="text-white">{fmt(forecast.forecast[hoveredIdx].predicted_spend)}</div>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -9,6 +9,8 @@ import AliasSpreadModal from './AliasSpreadModal';
 // Returns count of non-aliased transactions whose narration contains `pattern`,
 // excluding any narrations in `excludeNarrations` (used to avoid counting the
 // transaction(s) the user is intentionally aliasing).
+// Also excludes transactions that already match an ML group, so alias spread
+// doesn't pull ML-grouped transactions out of their groups.
 function countOtherMatches(allTransactions, pattern, excludeNarrations = []) {
   const p = pattern.toLowerCase();
   return allTransactions.filter(tx => {
@@ -17,6 +19,8 @@ function countOtherMatches(allTransactions, pattern, excludeNarrations = []) {
     if (!nar.includes(p)) return false;
     // Skip the transaction(s) being aliased
     if (excludeNarrations.some(ex => nar === ex.toLowerCase())) return false;
+    // Skip transactions that already match an ML group
+    if (getMLSuggestion(tx.original_narration || tx.narration || '')) return false;
     return true;
   }).length;
 }
@@ -163,13 +167,13 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
 
   const catStyle = CATEGORY_COLORS[category] || CATEGORY_COLORS.General;
 
-  const doSaveAlias = async (pattern, exactMatch) => {
+  const doSaveAlias = async (pattern, exactMatch, name, cat) => {
     setIsSaving(true);
     try {
       await api.saveAlias(userId, {
         recipient_pattern: pattern,
-        display_name: aliasName,
-        category: category,
+        display_name: name,
+        category: cat,
         exact_match: exactMatch || undefined
       });
       setIsAliased(true);
@@ -186,21 +190,23 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
   const handleSaveAlias = async () => {
     if (!aliasName.trim()) return;
     const pattern = originalNarration.slice(0, 60);
+    const name = aliasName.trim();
+    const cat = category;
     const otherCount = allTransactions
       ? countOtherMatches(allTransactions, pattern, [originalNarration])
       : 0;
     if (otherCount > 0) {
       setSpreadData({
         matchCount: otherCount,
-        displayName: aliasName.trim(),
-        onYes: () => { setShowSpreadModal(false); doSaveAlias(pattern, false); },
-        onNo: () => { setShowSpreadModal(false); doSaveAlias(pattern, true); },
+        displayName: name,
+        onYes: () => { setShowSpreadModal(false); doSaveAlias(pattern, false, name, cat); },
+        onNo: () => { setShowSpreadModal(false); doSaveAlias(pattern, true, name, cat); },
         onCancel: () => { setShowSpreadModal(false); },
       });
       setShowSpreadModal(true);
       return;
     }
-    doSaveAlias(pattern, false);
+    doSaveAlias(pattern, false, name, cat);
   };
 
   const handleAcceptSuggestion = async () => {
@@ -376,14 +382,14 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
     });
   };
 
-  const doAliasAll = async (exactMatch) => {
+  const doAliasAll = async (exactMatch, cat, txs) => {
     setIsSaving(true);
     try {
-      for (const tx of transactions) {
+      for (const tx of txs) {
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
-          display_name: category,
-          category,
+          display_name: cat,
+          category: cat,
           exact_match: exactMatch || undefined
         });
       }
@@ -398,7 +404,9 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
   const handleAliasAll = async () => {
     setIsSaving(true);
     try {
-      const patterns = transactions.map(tx =>
+      const cat = category;
+      const txs = transactions;
+      const patterns = txs.map(tx =>
         (tx.original_narration || tx.narration).slice(0, 60)
       );
       const allExclude = patterns.map(p => p.toLowerCase());
@@ -408,19 +416,19 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
       if (hasSpread) {
         setSpreadData({
           matchCount: allTransactions ? patterns.reduce((sum, p) => sum + countOtherMatches(allTransactions, p, allExclude), 0) : 0,
-          displayName: category,
-          onYes: () => { setShowSpreadModal(false); doAliasAll(false); },
-          onNo: () => { setShowSpreadModal(false); doAliasAll(true); },
+          displayName: cat,
+          onYes: () => { setShowSpreadModal(false); doAliasAll(false, cat, txs); },
+          onNo: () => { setShowSpreadModal(false); doAliasAll(true, cat, txs); },
           onCancel: () => { setShowSpreadModal(false); },
         });
         setShowSpreadModal(true);
         return;
       }
-      for (const tx of transactions) {
+      for (const tx of txs) {
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
-          display_name: category,
-          category
+          display_name: cat,
+          category: cat
         });
       }
       if (onAliasUpdate) onAliasUpdate();
@@ -431,15 +439,16 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
     }
   };
 
-  const doAliasSelected = async (exactMatch) => {
+  const doAliasSelected = async (exactMatch, name, cat, ids, txs) => {
+    if (!name || !name.trim()) return;
     setIsSaving(true);
     try {
-      for (const [idx, tx] of transactions.entries()) {
-        if (!selectedIds.has(idx)) continue;
+      for (const [idx, tx] of txs.entries()) {
+        if (!ids.has(idx)) continue;
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
-          display_name: batchName,
-          category: batchCategory,
+          display_name: name,
+          category: cat,
           exact_match: exactMatch || undefined
         });
       }
@@ -455,11 +464,15 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
 
   const handleAliasSelected = async () => {
     if (!batchName.trim()) return;
+    const name = batchName.trim();
+    const cat = batchCategory;
+    const ids = selectedIds;
+    const txs = transactions;
     setIsSaving(true);
     try {
       const patterns = [];
-      for (const [idx, tx] of transactions.entries()) {
-        if (!selectedIds.has(idx)) continue;
+      for (const [idx, tx] of txs.entries()) {
+        if (!ids.has(idx)) continue;
         patterns.push((tx.original_narration || tx.narration).slice(0, 60));
       }
       const allExclude = patterns.map(p => p.toLowerCase());
@@ -469,20 +482,20 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
       if (hasSpread) {
         setSpreadData({
           matchCount: allTransactions ? patterns.reduce((sum, p) => sum + countOtherMatches(allTransactions, p, allExclude), 0) : 0,
-          displayName: batchName.trim(),
-          onYes: () => { setShowSpreadModal(false); doAliasSelected(false); },
-          onNo: () => { setShowSpreadModal(false); doAliasSelected(true); },
+          displayName: name,
+          onYes: () => { setShowSpreadModal(false); doAliasSelected(false, name, cat, ids, txs); },
+          onNo: () => { setShowSpreadModal(false); doAliasSelected(true, name, cat, ids, txs); },
           onCancel: () => { setShowSpreadModal(false); },
         });
         setShowSpreadModal(true);
         return;
       }
-      for (const [idx, tx] of transactions.entries()) {
-        if (!selectedIds.has(idx)) continue;
+      for (const [idx, tx] of txs.entries()) {
+        if (!ids.has(idx)) continue;
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
-          display_name: batchName,
-          category: batchCategory
+          display_name: name,
+          category: cat
         });
       }
       setShowForm(false);
@@ -602,16 +615,15 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
     });
   };
 
-  const doAliasAll = async (exactMatch) => {
-    const name = group.display_name || groupName;
+  const doAliasAll = async (exactMatch, name, cat, txs) => {
     if (!name.trim()) return;
     setIsSaving(true);
     try {
-      for (const tx of group.transactions) {
+      for (const tx of txs) {
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
           display_name: name,
-          category: group.category || 'General',
+          category: cat,
           exact_match: exactMatch || undefined
         });
       }
@@ -627,7 +639,9 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
   const handleAliasAll = async () => {
     const name = group.display_name || groupName;
     if (!name.trim()) return;
-    const patterns = group.transactions.map(tx =>
+    const cat = group.category || 'General';
+    const txs = group.transactions;
+    const patterns = txs.map(tx =>
       (tx.original_narration || tx.narration).slice(0, 60)
     );
     const allExclude = patterns.map(p => p.toLowerCase());
@@ -639,26 +653,26 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
       setSpreadData({
         matchCount: totalMatches,
         displayName: name,
-        onYes: () => { setShowSpreadModal(false); doAliasAll(false); },
-        onNo: () => { setShowSpreadModal(false); doAliasAll(true); },
+        onYes: () => { setShowSpreadModal(false); doAliasAll(false, name, cat, txs); },
+        onNo: () => { setShowSpreadModal(false); doAliasAll(true, name, cat, txs); },
         onCancel: () => { setShowSpreadModal(false); },
       });
       setShowSpreadModal(true);
       return;
     }
-    doAliasAll(false);
+    doAliasAll(false, name, cat, txs);
   };
 
-  const doAliasSelected = async (exactMatch) => {
-    if (!batchName.trim()) return;
+  const doAliasSelected = async (exactMatch, name, cat, ids, txs) => {
+    if (!name.trim()) return;
     setIsSaving(true);
     try {
-      for (const [idx, tx] of group.transactions.entries()) {
-        if (!selectedIds.has(idx)) continue;
+      for (const [idx, tx] of txs.entries()) {
+        if (!ids.has(idx)) continue;
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
-          display_name: batchName,
-          category: batchCategory,
+          display_name: name,
+          category: cat,
           exact_match: exactMatch || undefined
         });
       }
@@ -675,9 +689,13 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
 
   const handleAliasSelected = async () => {
     if (!batchName.trim()) return;
+    const name = batchName.trim();
+    const cat = batchCategory;
+    const ids = selectedIds;
+    const txs = group.transactions;
     const patterns = [];
-    for (const [idx, tx] of group.transactions.entries()) {
-      if (!selectedIds.has(idx)) continue;
+    for (const [idx, tx] of txs.entries()) {
+      if (!ids.has(idx)) continue;
       patterns.push((tx.original_narration || tx.narration).slice(0, 60));
     }
     const allExclude = patterns.map(p => p.toLowerCase());
@@ -688,15 +706,15 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
       const totalMatches = allTransactions ? patterns.reduce((sum, p) => sum + countOtherMatches(allTransactions, p, allExclude), 0) : 0;
       setSpreadData({
         matchCount: totalMatches,
-        displayName: batchName.trim(),
-        onYes: () => { setShowSpreadModal(false); doAliasSelected(false); },
-        onNo: () => { setShowSpreadModal(false); doAliasSelected(true); },
+        displayName: name,
+        onYes: () => { setShowSpreadModal(false); doAliasSelected(false, name, cat, ids, txs); },
+        onNo: () => { setShowSpreadModal(false); doAliasSelected(true, name, cat, ids, txs); },
         onCancel: () => { setShowSpreadModal(false); },
       });
       setShowSpreadModal(true);
       return;
     }
-    doAliasSelected(false);
+    doAliasSelected(false, name, cat, ids, txs);
   };
 
   const toggleExpand = () => {
@@ -834,17 +852,17 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
     }
   };
 
-  const doFlatAliasSubmit = async (exactMatch) => {
-    if (!flatBatchName.trim()) return;
-    const txs = flatSection === 'pending' ? pendingTransactions : creditTransactions;
+  const doFlatAliasSubmit = async (exactMatch, name, section, ids, category) => {
+    if (!name || !name.trim()) return;
+    const txs = section === 'pending' ? pendingTransactions : creditTransactions;
     setFlatBatchSaving(true);
     try {
       for (const [idx, tx] of txs.entries()) {
-        if (flatBatchIds.size > 0 && !flatBatchIds.has(idx)) continue;
+        if (ids.size > 0 && !ids.has(idx)) continue;
         await api.saveAlias(userId, {
           recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
-          display_name: flatBatchName,
-          category: flatBatchCategory,
+          display_name: name,
+          category: category,
           exact_match: exactMatch || undefined
         });
       }
@@ -860,9 +878,13 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
 
   const handleFlatAliasSubmit = async () => {
     if (!flatBatchName.trim()) return;
-    const txs = flatSection === 'pending' ? pendingTransactions : creditTransactions;
+    const name = flatBatchName.trim();
+    const section = flatSection;
+    const ids = new Set(flatBatchIds);
+    const cat = flatBatchCategory;
+    const txs = section === 'pending' ? pendingTransactions : creditTransactions;
     const patterns = txs
-      .filter((_, idx) => flatBatchIds.size === 0 || flatBatchIds.has(idx))
+      .filter((_, idx) => ids.size === 0 || ids.has(idx))
       .map(tx => (tx.original_narration || tx.narration).slice(0, 60));
     const allExclude = patterns.map(p => p.toLowerCase());
     const hasSpread = patterns.some(p =>
@@ -872,15 +894,15 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
       const totalMatches = patterns.reduce((sum, p) => sum + countOtherMatches(transactions, p, allExclude), 0);
       setSpreadData({
         matchCount: totalMatches,
-        displayName: flatBatchName.trim(),
-        onYes: () => { setShowSpreadModal(false); doFlatAliasSubmit(false); },
-        onNo: () => { setShowSpreadModal(false); doFlatAliasSubmit(true); },
+        displayName: name,
+        onYes: () => { setShowSpreadModal(false); doFlatAliasSubmit(false, name, section, ids, cat); },
+        onNo: () => { setShowSpreadModal(false); doFlatAliasSubmit(true, name, section, ids, cat); },
         onCancel: () => { setShowSpreadModal(false); },
       });
       setShowSpreadModal(true);
       return;
     }
-    doFlatAliasSubmit(false);
+    doFlatAliasSubmit(false, name, section, ids, cat);
   };
 
   const cancelFlatBatch = () => {

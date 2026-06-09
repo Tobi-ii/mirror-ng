@@ -67,10 +67,11 @@ export const localData = {
     const existing = await this.getTransactions(userId) || [];
     const merged = [...existing];
     for (const tx of txs) {
-      const dup = merged.find(
+      const idx = merged.findIndex(
         e => e.bank === tx.bank && e.amount === tx.amount && e.timestamp === tx.timestamp
       );
-      if (!dup) merged.push(tx);
+      if (idx >= 0) merged[idx] = tx;
+      else merged.push(tx);
     }
     await set(pfx(userId, 'txn'), merged);
     return merged;

@@ -117,7 +117,47 @@ export const api = {
    * Resolve onboarding gaps by setting missing balances
    */
   resolveOnboardingGaps: async (userId, resolutions) => {
-    if (!_cloudSync) return { success: true };
+    if (!_cloudSync) {
+      // Local mode: update stored transactions with new last4 and set anchor balances
+      for (const res of resolutions) {
+        if (res.new_last4 && res.new_last4 !== res.old_last4) {
+          const txs = await localData.getTransactions(userId);
+          const updated = txs.map(tx => {
+            if (tx.bank === res.bank && (!tx.account_last4 || tx.account_last4 === '' || tx.account_last4 === '0000')) {
+              return { ...tx, account_last4: res.new_last4 };
+            }
+            return tx;
+          });
+          await localData.saveTransactions(userId, updated);
+          // Also update balance's account_last4 so Dashboard doesn't show duplicates
+          const bals = await localData.getBalances(userId);
+          const bal = bals.find(b => b.bank === res.bank);
+          if (bal) {
+            bal.account_last4 = res.new_last4;
+            await localData.saveBalances(userId, bals);
+          }
+        }
+        if (res.anchor_balance !== undefined) {
+          const bals = await localData.getBalances(userId);
+          const existing = bals.find(b => b.bank === res.bank);
+          if (existing) {
+            existing.balance = parseFloat(res.anchor_balance);
+            existing.is_anchor = true;
+            existing.account_last4 = res.new_last4 || existing.account_last4;
+          } else {
+            bals.push({
+              bank: res.bank,
+              account_last4: res.new_last4 || '0000',
+              balance: parseFloat(res.anchor_balance),
+              is_anchor: true,
+              last_updated: new Date().toISOString()
+            });
+          }
+          await localData.saveBalances(userId, bals);
+        }
+      }
+      return { success: true };
+    }
     const res = await authFetch(`${API_BASE}/api/onboarding-gaps/${String(userId)}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -152,11 +192,16 @@ export const api = {
         // Also update local balances: if a synced transaction includes a balance
         // for a bank, save/update it so the dashboard stays accurate
         const localBals = await localData.getBalances(userId);
+        const localTxs = await localData.getTransactions(userId);
         for (const tx of data.new_transactions) {
           const existing = localBals.find(b => b.bank === tx.bank);
           if (tx.balance !== null && tx.balance !== undefined) {
             if (existing) existing.balance = tx.balance;
-            else localBals.push({ bank: tx.bank, account_last4: tx.account_last4 || '0000', balance: tx.balance, last_updated: tx.timestamp, is_anchor: false });
+            else {
+              // Use a resolved last4 from existing transactions (user may have set it via gaps modal)
+              const resolvedLast4 = localTxs.find(t => t.bank === tx.bank && t.account_last4 && t.account_last4 !== '0000')?.account_last4;
+              localBals.push({ bank: tx.bank, account_last4: tx.account_last4 || resolvedLast4 || '0000', balance: tx.balance, last_updated: tx.timestamp, is_anchor: false });
+            }
           }
         }
         await localData.saveBalances(userId, localBals);
@@ -357,8 +402,10 @@ export const api = {
   /**
    * LLM Agent Chat v2 (Structured Intent Agent - No hallucination)
    */
-  chatV2: async (userId, message, history = []) => {
+  chatV2: async (userId, message, history = [], sinceDate, untilDate) => {
     const body = { user_id: String(userId), message, history };
+    if (sinceDate) body.since_date = sinceDate;
+    if (untilDate) body.until_date = untilDate;
     if (!_cloudSync) {
       const txs = await localData.getTransactions(userId);
       body.local_transactions = txs;

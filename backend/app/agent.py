@@ -1,6 +1,6 @@
 """
 Mirror.ng Agent — LLM-powered financial assistant
-Primary: Groq (Llama 3.3 70B) | Fallback: DeepSeek
+Primary: Gemini 2.0 Flash | Fallback: Groq (Llama 3.3 70B) | Last resort: DeepSeek
 """
 
 import os
@@ -13,6 +13,12 @@ from openai import OpenAI
 logger = logging.getLogger(__name__)
 
 # ── LLM Clients ────────────────────────────────────────────────────────
+def get_gemini_client():
+    return OpenAI(
+        api_key=os.getenv("GEMINI_API_KEY"),
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
+
 def get_groq_client():
     return OpenAI(
         api_key=os.getenv("GROQ_API_KEY"),
@@ -25,6 +31,7 @@ def get_deepseek_client():
         base_url="https://api.deepseek.com/v1"
     )
 
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 DEEPSEEK_MODEL = "deepseek-chat"
 
@@ -427,13 +434,18 @@ def run_agent(user_id: str, message: str, history: List[Dict], db_conn, since_da
         )
 
     try:
-        client = get_groq_client()
-        response = call_llm(client, GROQ_MODEL, messages)
-        model_used = f"groq/{GROQ_MODEL}"
+        client = get_gemini_client()
+        response = call_llm(client, GEMINI_MODEL, messages)
+        model_used = f"gemini/{GEMINI_MODEL}"
     except Exception:
-        client = get_deepseek_client()
-        response = call_llm(client, DEEPSEEK_MODEL, messages)
-        model_used = f"deepseek/{DEEPSEEK_MODEL}"
+        try:
+            client = get_groq_client()
+            response = call_llm(client, GROQ_MODEL, messages)
+            model_used = f"groq/{GROQ_MODEL}"
+        except Exception:
+            client = get_deepseek_client()
+            response = call_llm(client, DEEPSEEK_MODEL, messages)
+            model_used = f"deepseek/{DEEPSEEK_MODEL}"
 
     for _ in range(5):
         if response.choices[0].finish_reason != "tool_calls":
@@ -450,7 +462,10 @@ def run_agent(user_id: str, message: str, history: List[Dict], db_conn, since_da
             result = execute_tool(tool_name, tool_args, user_id, db_conn)
             messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
 
-        response = call_llm(client, GROQ_MODEL if "groq" in model_used else DEEPSEEK_MODEL, messages)
+        try:
+            response = call_llm(client, GEMINI_MODEL if "gemini" in model_used else GROQ_MODEL if "groq" in model_used else DEEPSEEK_MODEL, messages)
+        except Exception:
+            break
 
     return {
         "response": response.choices[0].message.content or "I couldn't generate a response.",

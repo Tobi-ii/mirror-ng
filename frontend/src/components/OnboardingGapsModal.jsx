@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { api } from '../services/api'
 
-export default function OnboardingGapsModal({ userId, isOpen, onClose, onComplete }) {
+export default function OnboardingGapsModal({ userId, isOpen, onClose, onComplete, inlineGaps, inlineTotalAccounts }) {
   const [gaps, setGaps]     = useState([])
+  const [totalAccounts, setTotalAccounts] = useState(0)
   const [values, setValues] = useState({})
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -10,22 +11,39 @@ export default function OnboardingGapsModal({ userId, isOpen, onClose, onComplet
   useEffect(() => {
     if (!isOpen || !userId) return
     setLoading(true)
-    api.getOnboardingGaps(userId)
-      .then(res => {
-        const g = res?.gaps || []
-        setGaps(g)
-        const init = {}
-        g.forEach((gap, i) => {
-          init[i] = {
-            new_last4:      gap.account_last4 || '',
-            anchor_balance: '',
-          }
+    if (inlineGaps) {
+      // Gaps provided inline from sync response (cloud sync off)
+      setGaps(inlineGaps);
+      setTotalAccounts(inlineTotalAccounts || inlineGaps.length);
+      const init = {};
+      inlineGaps.forEach((gap, i) => {
+        init[i] = {
+          new_last4:      gap.account_last4 || '',
+          anchor_balance: '',
+        };
+      });
+      setValues(init);
+      setLoading(false);
+    } else {
+      // Fetch gaps from API (cloud sync on)
+      api.getOnboardingGaps(userId)
+        .then(res => {
+          const g = res?.gaps || []
+          setGaps(g)
+          setTotalAccounts(res?.total_accounts || 0)
+          const init = {}
+          g.forEach((gap, i) => {
+            init[i] = {
+              new_last4:      gap.account_last4 || '',
+              anchor_balance: '',
+            }
+          })
+          setValues(init)
         })
-        setValues(init)
-      })
-      .catch(err => console.error('Failed to fetch gaps:', err))
-      .finally(() => setLoading(false))
-  }, [isOpen, userId])
+        .catch(err => console.error('Failed to fetch gaps:', err))
+        .finally(() => setLoading(false))
+    }
+  }, [isOpen, userId, inlineGaps, inlineTotalAccounts])
 
   const handleChange = (index, field, value) => {
     setValues(v => ({ ...v, [index]: { ...v[index], [field]: value } }))
@@ -40,7 +58,6 @@ export default function OnboardingGapsModal({ userId, isOpen, onClose, onComplet
           old_last4: g.account_last4,
           new_last4: values[i]?.new_last4 || g.account_last4,
         }
-        // Only include anchor_balance if this account needs one
         if (g.needs_anchor) {
           resolution.anchor_balance = parseFloat(values[i]?.anchor_balance) || 0
         }
@@ -57,14 +74,20 @@ export default function OnboardingGapsModal({ userId, isOpen, onClose, onComplet
 
   if (!isOpen) return null
 
-  // Describe what's needed per gap
+  // Describe what's needed per gap — action-oriented with bank name
   const gapLabel = (gap) => {
-    if (gap.needs_account_number && gap.needs_anchor)
-      return 'Missing account number and opening balance'
     if (gap.needs_account_number)
-      return 'Missing account number — balance is auto-tracked from emails'
+      return 'Enter last 4 digits of account number'
     if (gap.needs_anchor)
-      return 'Missing opening balance — account number found in emails'
+      return 'Enter starting / anchor balance'
+    return ''
+  }
+
+  const gapDescription = (gap) => {
+    if (gap.needs_account_number)
+      return 'No account number found in email alerts. Provide the last 4 digits — Mirror will track your balance from emails.'
+    if (gap.needs_anchor)
+      return 'This bank does not include balance in email alerts. Provide your balance at audit start date so Mirror can calculate running totals.'
     return ''
   }
 
@@ -85,11 +108,12 @@ export default function OnboardingGapsModal({ userId, isOpen, onClose, onComplet
         {/* Header */}
         <div style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: '#fff' }}>
-            One more step
+            Some accounts need configuration
           </h2>
           <p style={{ color: '#666', fontSize: 14, lineHeight: 1.6 }}>
-            Mirror found some accounts that need a little info to track
-            your money accurately.
+            {gaps.length > 0
+              ? `${gaps.length} of ${totalAccounts} account${totalAccounts > 1 ? 's' : ''} need${totalAccounts > 1 ? '' : 's'} configuration.`
+              : 'Mirror found some accounts that need a little info to track your money accurately.'}
           </p>
         </div>
 
@@ -125,16 +149,22 @@ export default function OnboardingGapsModal({ userId, isOpen, onClose, onComplet
               display: 'flex', justifyContent: 'space-between',
               alignItems: 'flex-start', marginBottom: 12,
             }}>
-              <div>
+              <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', marginBottom: 4 }}>
                   {gap.bank}
                 </div>
+                <div style={{
+                  fontSize: 12, fontWeight: 600, color: '#f59e0b',
+                  marginBottom: 4,
+                }}>
+                  → {gapLabel(gap)}
+                </div>
                 <div style={{ fontSize: 11, color: '#555', lineHeight: 1.5 }}>
-                  {gapLabel(gap)}
+                  {gapDescription(gap)}
                 </div>
               </div>
               {gap.account_last4 && (
-                <span style={{ color: '#444', fontFamily: 'monospace', fontSize: 12, marginTop: 2 }}>
+                <span style={{ color: '#444', fontFamily: 'monospace', fontSize: 12, marginTop: 2, whiteSpace: 'nowrap', marginLeft: 12 }}>
                   •••• {gap.account_last4}
                 </span>
               )}

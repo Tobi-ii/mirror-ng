@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { api } from '../services/api'
 import { Send, Bot, User, Zap, RotateCcw } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 
 // Suggested questions shown as clickable buttons when the chat is empty
 const SUGGESTIONS = [
@@ -72,7 +73,7 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
 
     // Fall back to v2 (intent-based, no LLM needed)
     try {
-      const res = await api.chatV2(userId, userMsg, buildHistory())
+      const res = await api.chatV2(userId, userMsg, buildHistory(), sinceDate, untilDate)
       if (res.success) {
         setMessages(prev => [...prev, {
           role: 'assistant',
@@ -173,7 +174,20 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
                   ? 'bg-[#0a0c10] border border-white/5 text-slate-200'
                   : 'bg-indigo-600 text-white'
               }`}>
-                {msg.content}
+                {msg.role === 'assistant' ? (
+                  <ReactMarkdown
+                    components={{
+                      ul: ({ children }) => <ul className="list-disc pl-4 space-y-1 my-1">{children}</ul>,
+                      ol: ({ children }) => <ol className="list-decimal pl-4 space-y-1 my-1">{children}</ol>,
+                      li: ({ children }) => <li className="text-slate-200">{children}</li>,
+                      strong: ({ children }) => <strong className="font-bold text-white">{children}</strong>,
+                      p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+                      code: ({ children }) => <code className="bg-white/5 px-1 py-0.5 rounded text-[11px] font-mono text-indigo-300">{children}</code>,
+                    }}
+                  >{msg.content}</ReactMarkdown>
+                ) : (
+                  msg.content
+                )}
               </div>
             </div>
           </div>
