@@ -403,41 +403,11 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
   };
 
   const handleAliasAll = async () => {
-    setIsSaving(true);
-    try {
-      const cat = category;
-      const txs = transactions;
-      const patterns = txs.map(tx =>
-        (tx.original_narration || tx.narration).slice(0, 60)
-      );
-      const allExclude = patterns.map(p => p.toLowerCase());
-      const hasSpread = patterns.some(p =>
-        transactions ? countOtherMatches(transactions, p, allExclude) > 0 : false
-      );
-      if (hasSpread) {
-        setSpreadData({
-          matchCount: transactions ? patterns.reduce((sum, p) => sum + countOtherMatches(transactions, p, allExclude), 0) : 0,
-          displayName: cat,
-          onYes: () => { setShowSpreadModal(false); doAliasAll(false, cat, txs); },
-          onNo: () => { setShowSpreadModal(false); doAliasAll(true, cat, txs); },
-          onCancel: () => { setShowSpreadModal(false); },
-        });
-        setShowSpreadModal(true);
-        return;
-      }
-      for (const tx of txs) {
-        await api.saveAlias(userId, {
-          recipient_pattern: (tx.original_narration || tx.narration).slice(0, 60),
-          display_name: cat,
-          category: cat
-        });
-      }
-      if (onAliasUpdate) onAliasUpdate();
-    } catch (error) {
-      console.error('Failed to alias all:', error);
-    } finally {
-      setIsSaving(false);
-    }
+    // Select all and open the form — user can deselect before aliasing
+    setSelectedIds(new Set(transactions.map((_, idx) => idx)));
+    setBatchName(category);
+    setBatchCategory(category);
+    setShowForm(true);
   };
 
   const doAliasSelected = async (exactMatch, name, cat, ids, txs) => {
@@ -639,30 +609,11 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
   };
 
   const handleAliasAll = async () => {
-    const name = group.display_name || groupName;
-    if (!name.trim()) return;
-    const cat = group.category || 'General';
-    const txs = group.transactions;
-    const patterns = txs.map(tx =>
-      (tx.original_narration || tx.narration).slice(0, 60)
-    );
-    const allExclude = patterns.map(p => p.toLowerCase());
-    const hasSpread = patterns.some(p =>
-      group.transactions ? countOtherMatches(group.transactions, p, allExclude) > 0 : false
-    );
-    if (hasSpread) {
-      const totalMatches = group.transactions ? patterns.reduce((sum, p) => sum + countOtherMatches(group.transactions, p, allExclude), 0) : 0;
-      setSpreadData({
-        matchCount: totalMatches,
-        displayName: name,
-        onYes: () => { setShowSpreadModal(false); doAliasAll(false, name, cat, txs); },
-        onNo: () => { setShowSpreadModal(false); doAliasAll(true, name, cat, txs); },
-        onCancel: () => { setShowSpreadModal(false); },
-      });
-      setShowSpreadModal(true);
-      return;
-    }
-    doAliasAll(false, name, cat, txs);
+    // Select all and open the form — user can deselect before aliasing
+    setSelectedIds(new Set(group.transactions.map((_, idx) => idx)));
+    setBatchName(group.display_name || groupName);
+    setBatchCategory(group.category || 'General');
+    setShowForm(true);
   };
 
   const doAliasSelected = async (exactMatch, name, cat, ids, txs) => {
@@ -844,15 +795,12 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
 
   const handleFlatAliasAll = async (section) => {
     const txs = section === 'pending' ? pendingTransactions : creditTransactions;
-    setFlatBatchSaving(true);
-    try {
-      setFlatSection(section);
-      setFlatBatchName('');
-      setFlatBatchCategory('General');
-      setFlatShowForm(true);
-    } finally {
-      setFlatBatchSaving(false);
-    }
+    // Select all — user can deselect before saving
+    setFlatBatchIds(new Set(txs.map((_, idx) => idx)));
+    setFlatSection(section);
+    setFlatBatchName('');
+    setFlatBatchCategory('General');
+    setFlatShowForm(true);
   };
 
   const doFlatAliasSubmit = async (exactMatch, name, section, ids, category) => {
