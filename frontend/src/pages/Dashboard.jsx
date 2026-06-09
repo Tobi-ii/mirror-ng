@@ -190,6 +190,9 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
         return tx.narration?.toLowerCase().includes(pattern);
       }) : null;
       if (match) {
+        // Don't override ML-grouped transactions — alias stays out of their groups
+        const ml = getMLSuggestion(tx.original_narration || tx.narration || '');
+        if (ml && tx.category !== 'General') return tx;
         return { 
           ...tx, 
           narration: match.display_name, 

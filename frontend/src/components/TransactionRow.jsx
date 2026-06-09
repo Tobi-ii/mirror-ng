@@ -123,7 +123,7 @@ function groupSimilarTransactions(transactions) {
 }
 
 // Individual Transaction Component - now editable for all types (including aliased and credits)
-function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true, selected, selectionCount, onToggleSelect, allTransactions }) {
+function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true, selected, selectionCount, onToggleSelect, allTransactions, scopeTransactions }) {
   const [isEditing, setIsEditing] = useState(false);
   const [aliasName, setAliasName] = useState(tx?.narration || '');
   const [category, setCategory] = useState(tx?.category || 'General');
@@ -192,8 +192,9 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
     const pattern = originalNarration.slice(0, 60);
     const name = aliasName.trim();
     const cat = category;
-    const otherCount = allTransactions
-      ? countOtherMatches(allTransactions, pattern, [originalNarration])
+    const scope = scopeTransactions || allTransactions;
+    const otherCount = scope
+      ? countOtherMatches(scope, pattern, [originalNarration])
       : 0;
     if (otherCount > 0) {
       setSpreadData({
@@ -411,11 +412,11 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
       );
       const allExclude = patterns.map(p => p.toLowerCase());
       const hasSpread = patterns.some(p =>
-        allTransactions ? countOtherMatches(allTransactions, p, allExclude) > 0 : false
+        transactions ? countOtherMatches(transactions, p, allExclude) > 0 : false
       );
       if (hasSpread) {
         setSpreadData({
-          matchCount: allTransactions ? patterns.reduce((sum, p) => sum + countOtherMatches(allTransactions, p, allExclude), 0) : 0,
+          matchCount: transactions ? patterns.reduce((sum, p) => sum + countOtherMatches(transactions, p, allExclude), 0) : 0,
           displayName: cat,
           onYes: () => { setShowSpreadModal(false); doAliasAll(false, cat, txs); },
           onNo: () => { setShowSpreadModal(false); doAliasAll(true, cat, txs); },
@@ -477,11 +478,11 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
       }
       const allExclude = patterns.map(p => p.toLowerCase());
       const hasSpread = patterns.some(p =>
-        allTransactions ? countOtherMatches(allTransactions, p, allExclude) > 0 : false
+        transactions ? countOtherMatches(transactions, p, allExclude) > 0 : false
       );
       if (hasSpread) {
         setSpreadData({
-          matchCount: allTransactions ? patterns.reduce((sum, p) => sum + countOtherMatches(allTransactions, p, allExclude), 0) : 0,
+          matchCount: transactions ? patterns.reduce((sum, p) => sum + countOtherMatches(transactions, p, allExclude), 0) : 0,
           displayName: name,
           onYes: () => { setShowSpreadModal(false); doAliasSelected(false, name, cat, ids, txs); },
           onNo: () => { setShowSpreadModal(false); doAliasSelected(true, name, cat, ids, txs); },
@@ -572,10 +573,11 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
               isAliased={true}
               index={idx}
               showEditButton={true}
-               selected={selectedIds.has(idx)}
-               selectionCount={selectedIds.size}
-               onToggleSelect={toggleSelection}
-               allTransactions={allTransactions}
+                selected={selectedIds.has(idx)}
+                selectionCount={selectedIds.size}
+                onToggleSelect={toggleSelection}
+                allTransactions={allTransactions}
+                scopeTransactions={transactions}
              />
            ))}
          </div>
@@ -646,10 +648,10 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
     );
     const allExclude = patterns.map(p => p.toLowerCase());
     const hasSpread = patterns.some(p =>
-      allTransactions ? countOtherMatches(allTransactions, p, allExclude) > 0 : false
+      group.transactions ? countOtherMatches(group.transactions, p, allExclude) > 0 : false
     );
     if (hasSpread) {
-      const totalMatches = allTransactions ? patterns.reduce((sum, p) => sum + countOtherMatches(allTransactions, p, allExclude), 0) : 0;
+      const totalMatches = group.transactions ? patterns.reduce((sum, p) => sum + countOtherMatches(group.transactions, p, allExclude), 0) : 0;
       setSpreadData({
         matchCount: totalMatches,
         displayName: name,
@@ -700,10 +702,10 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
     }
     const allExclude = patterns.map(p => p.toLowerCase());
     const hasSpread = patterns.some(p =>
-      allTransactions ? countOtherMatches(allTransactions, p, allExclude) > 0 : false
+      group.transactions ? countOtherMatches(group.transactions, p, allExclude) > 0 : false
     );
     if (hasSpread) {
-      const totalMatches = allTransactions ? patterns.reduce((sum, p) => sum + countOtherMatches(allTransactions, p, allExclude), 0) : 0;
+      const totalMatches = group.transactions ? patterns.reduce((sum, p) => sum + countOtherMatches(group.transactions, p, allExclude), 0) : 0;
       setSpreadData({
         matchCount: totalMatches,
         displayName: name,
@@ -787,6 +789,7 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
               selectionCount={selectedIds.size}
               onToggleSelect={toggleSelection}
               allTransactions={allTransactions}
+              scopeTransactions={group.transactions}
             />
           ))}
         </div>
@@ -882,16 +885,16 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
     const section = flatSection;
     const ids = new Set(flatBatchIds);
     const cat = flatBatchCategory;
-    const txs = section === 'pending' ? pendingTransactions : creditTransactions;
-    const patterns = txs
+    const sectionTxs = section === 'pending' ? pendingTransactions : creditTransactions;
+    const patterns = sectionTxs
       .filter((_, idx) => ids.size === 0 || ids.has(idx))
       .map(tx => (tx.original_narration || tx.narration).slice(0, 60));
     const allExclude = patterns.map(p => p.toLowerCase());
     const hasSpread = patterns.some(p =>
-      countOtherMatches(transactions, p, allExclude) > 0
+      countOtherMatches(sectionTxs, p, allExclude) > 0
     );
     if (hasSpread) {
-      const totalMatches = patterns.reduce((sum, p) => sum + countOtherMatches(transactions, p, allExclude), 0);
+      const totalMatches = patterns.reduce((sum, p) => sum + countOtherMatches(sectionTxs, p, allExclude), 0);
       setSpreadData({
         matchCount: totalMatches,
         displayName: name,
@@ -1087,6 +1090,7 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   selectionCount={flatBatchIds.size}
                   onToggleSelect={toggleFlatSelection('pending')}
                   allTransactions={transactions}
+                  scopeTransactions={pendingTransactions}
                 />
               ))}
             </div>
@@ -1151,6 +1155,7 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   selectionCount={flatBatchIds.size}
                   onToggleSelect={toggleFlatSelection('credits')}
                   allTransactions={transactions}
+                  scopeTransactions={creditTransactions}
                 />
               ))}
             </div>
