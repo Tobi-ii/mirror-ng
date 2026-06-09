@@ -3,7 +3,7 @@ models.py — Pydantic models for Mirror.ng API
 Defines request/response schemas for FastAPI endpoints.
 """
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import List, Optional, Literal
 from datetime import datetime
 
@@ -16,24 +16,17 @@ class Transaction(BaseModel):
     """
     Normalized transaction returned by API endpoints.
     """
+    model_config = ConfigDict(from_attributes=True)
+
     id: Optional[int] = None
-    bank: str
+    bank: str = Field(..., min_length=1)
     tx_type: Literal["credit", "debit", "unknown"]
     amount: float = Field(..., ge=0)
     balance: Optional[float] = None
     narration: str
-    account_last4: Optional[str] = None
+    account_last4: Optional[str] = Field(None, min_length=4, max_length=4)
     timestamp: Optional[datetime] = None
     category: str = "other"
-    
-    class Config:
-        from_attributes = True 
-    
-    @field_validator('amount')
-    def amount_must_be_positive(cls, v):
-        if v < 0:
-            raise ValueError('Amount cannot be negative')
-        return v
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -44,9 +37,11 @@ class AccountBalance(BaseModel):
     """
     Current balance for a single bank account.
     """
+    model_config = ConfigDict(from_attributes=True)
+
     bank: str
-    account_last4: str
-    balance: float = Field(..., ge=0)
+    account_last4: str = Field(..., min_length=4, max_length=4)
+    balance: float
     last_updated: Optional[datetime] = None
     is_anchor: bool = True
 
@@ -62,14 +57,32 @@ class SyncRequest(BaseModel):
     since_date: Optional[str] = None
     until_date: Optional[str] = None
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "user_id": "user_12345",
                 "since_date": "2026-04-04",
                 "until_date": "2026-05-04"
             }
         }
+    )
+
+
+class InitialBalanceItem(BaseModel):
+    """Sub-model for structured validation inside InitialBalanceRequest"""
+    bank: str = Field(..., min_length=1)
+    account_last4: str
+    balance: float = Field(..., ge=0)
+
+    @field_validator('account_last4', mode='before')
+    @classmethod
+    def truncate_to_last_four(cls, v):
+        if v is None:
+            raise ValueError('account_last4 is required')
+        val_str = str(v).strip()
+        if len(val_str) < 4:
+            raise ValueError('account_last4 must have at least 4 characters')
+        return val_str[-4:]
 
 
 class InitialBalanceRequest(BaseModel):
@@ -77,20 +90,7 @@ class InitialBalanceRequest(BaseModel):
     Request body for POST /api/set-initial-balances
     """
     user_id: str = Field(..., min_length=1, max_length=100)
-    balances: List[dict] = Field(..., min_length=1)
-    
-    @field_validator('balances')
-    def balances_must_be_valid(cls, v):
-        for item in v:
-            if not all(k in item for k in ['bank', 'account_last4', 'balance']):
-                raise ValueError('Each balance must have bank, account_last4, and balance')
-            
-            # CRITICAL FIX: Ensure we only store the last 4 digits
-            item['account_last4'] = str(item['account_last4'])[-4:]
-            
-            if item['balance'] < 0:
-                raise ValueError('Balance cannot be negative')
-        return v
+    balances: List[InitialBalanceItem] = Field(..., min_length=1)
 
 
 class ManualAdjustRequest(BaseModel):
@@ -142,7 +142,7 @@ class DataExportResponse(BaseModel):
     success: bool = True
     transactions: List[Transaction]
     balances: List[AccountBalance]
-    aliases: list
+    aliases: List[dict]
 
 
 class DataImportRequest(BaseModel):
@@ -167,17 +167,18 @@ class AgentChatRequest(BaseModel):
     Request body for AI-driven financial insights chat.
     """
     user_id: str
-    message: str
+    message: str = Field(..., min_length=1)
     history: List[dict] = []
     local_transactions: List[dict] = []
     since_date: Optional[str] = None
     until_date: Optional[str] = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "user_id": "user_12345",
                 "message": "What is my biggest expense this month?",
                 "history": []
             }
         }
+    )
