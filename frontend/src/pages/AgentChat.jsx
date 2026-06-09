@@ -13,7 +13,7 @@ const SUGGESTIONS = [
   "What was my biggest single debit?",
 ]
 
-export default function AgentChat({ userId }) {
+export default function AgentChat({ userId, sinceDate, untilDate }) {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -51,7 +51,7 @@ export default function AgentChat({ userId }) {
 
     try {
       const historyPayload = buildHistory()
-      const res = await api.chat(userId, userMsg, historyPayload)
+      const res = await api.chat(userId, userMsg, historyPayload, sinceDate, untilDate)
       
       if (res.success) {
         setMessages(prev => [...prev, {
@@ -69,7 +69,7 @@ export default function AgentChat({ userId }) {
 
     // Fall back to v2 (intent-based, no LLM needed)
     try {
-      const res = await api.chatV2(userId, userMsg, historyPayload)
+      const res = await api.chatV2(userId, userMsg, historyPayload, sinceDate, untilDate)
       if (res.success) {
         setMessages(prev => [...prev, {
           role: 'assistant',
