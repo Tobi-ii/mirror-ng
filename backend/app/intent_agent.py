@@ -497,6 +497,20 @@ def format_response(result: dict, question: str, previous_response: str = "") ->
             return f"Top: {top['group']} — ₦{top['total']:,.2f}"
         elif result.get("type") == "insight":
             return f"In: ₦{result['total_in']:,.2f} | Out: ₦{result['total_out']:,.2f} | Net: ₦{result['net']:,.2f}"
+        elif result.get("type") == "lookup":
+            tx = result.get("transaction")
+            if result.get("found") and tx:
+                amt = f"₦{tx['amount']:,.2f}" if isinstance(tx['amount'], (int, float)) else tx['amount']
+                bank = tx.get('bank', 'Unknown')
+                nar = tx.get('narration', 'Unknown')
+                ts = tx.get('timestamp', '')
+                return f"Found in **{bank}** — {amt}\n\n{nar}\n\n_{ts}_"
+            return "No matching transaction found."
+        elif result.get("type") == "list" and result.get("transactions"):
+            lines = [f"{i+1}. **{t.get('bank','?')}** — ₦{t['amount']:,.2f} — {t.get('narration','?')}" 
+                     for i, t in enumerate(result['transactions'][:10])]
+            header = f"Found {result['count']} transactions:\n" if result.get('count') else ""
+            return header + "\n".join(lines)
         return json.dumps(result, default=str, indent=2)
 
 # ── Pattern-based Intent Parser (zero LLM dependency) ───────────────
