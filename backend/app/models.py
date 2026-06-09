@@ -21,12 +21,21 @@ class Transaction(BaseModel):
     id: Optional[int] = None
     bank: str = Field(..., min_length=1)
     tx_type: Literal["credit", "debit", "unknown"]
-    amount: float = Field(..., ge=0)
+    amount: float = Field(..., ge=0)  # Core Rust-tier validation replaces manual Python-tier hooks
     balance: Optional[float] = None
     narration: str
     account_last4: Optional[str] = Field(None, min_length=4, max_length=4)
     timestamp: Optional[datetime] = None
     category: str = "other"
+
+
+class AgentTransactionContext(Transaction):
+    """
+    Extends the standard Transaction model to ensure the AI agent 
+    natively parses anomaly metrics passed from the client or state machine.
+    """
+    is_anomaly: bool = False
+    anomaly_reason: Optional[str] = None
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -39,7 +48,7 @@ class AccountBalance(BaseModel):
     """
     model_config = ConfigDict(from_attributes=True)
 
-    bank: str
+    bank: str = Field(..., min_length=1)
     account_last4: str = Field(..., min_length=4, max_length=4)
     balance: float
     last_updated: Optional[datetime] = None
@@ -69,7 +78,10 @@ class SyncRequest(BaseModel):
 
 
 class InitialBalanceItem(BaseModel):
-    """Sub-model for structured validation inside InitialBalanceRequest"""
+    """
+    Sub-model providing isolation, validation, and truncation 
+    for accounts inside InitialBalanceRequest without data mutation side-effects.
+    """
     bank: str = Field(..., min_length=1)
     account_last4: str
     balance: float = Field(..., ge=0)
@@ -169,7 +181,7 @@ class AgentChatRequest(BaseModel):
     user_id: str
     message: str = Field(..., min_length=1)
     history: List[dict] = []
-    local_transactions: List[dict] = []
+    local_transactions: List[AgentTransactionContext] = []  # Hardened typing tracks anomaly layer structures
     since_date: Optional[str] = None
     until_date: Optional[str] = None
 

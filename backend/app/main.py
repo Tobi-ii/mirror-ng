@@ -818,14 +818,15 @@ def _make_local_db(transactions, user_id=None):
         )
     ''')
     for tx in transactions:
-        tx_user_id = user_id or tx.get('user_id')
+        d = tx if isinstance(tx, dict) else (tx.model_dump() if hasattr(tx, 'model_dump') else {})
+        tx_user_id = user_id or d.get('user_id')
         mem.execute('''
             INSERT INTO transactions (user_id, bank, tx_type, amount, balance_after, narration, account_last4, timestamp, category)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            tx_user_id, tx.get('bank'), tx.get('tx_type'), tx.get('amount'),
-            tx.get('balance'), tx.get('narration'), tx.get('account_last4'),
-            tx.get('timestamp'), tx.get('category', 'other')
+            tx_user_id, d.get('bank'), d.get('tx_type'), d.get('amount'),
+            d.get('balance'), d.get('narration'), d.get('account_last4'),
+            d.get('timestamp'), d.get('category', 'other')
         ))
     mem.commit()
     return mem
