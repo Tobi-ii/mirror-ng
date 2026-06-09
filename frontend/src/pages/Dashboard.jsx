@@ -281,20 +281,17 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
     .map(b => ({ ...b, isSynced: false })));
 
   // Final combined list: synced banks first, then manual-only banks
-  const usedColorSet = new Set();
+  const getDefaultColorIdx = (bank) => ({
+    'Sterling Bank': 0, 'Wema (ALAT)': 1, 'Wema Bank': 1, 'Kuda': 0,
+    'GTBank': 2, 'Access Bank': 5, 'OPay': 2, 'Moniepoint': 4,
+  })[bank] ?? 8;
   const displayBalances = [...syncedBanks, ...manualBanks]
     .sort((a, b) => a.isSynced === b.isSynced ? 0 : a.isSynced ? -1 : 1)
-    .map(b => {
-      let ci = bankColors[b.bank];
-      if (ci === undefined) {
-        for (let i = 0; i < 9; i++) {
-          if (!usedColorSet.has(i)) { ci = i; break; }
-        }
-        if (ci === undefined) ci = 0;
-      }
-      usedColorSet.add(ci);
-      return { ...b, colorIndex: ci };
-    });
+    .map(b => ({
+      ...b,
+      colorIndex: bankColors[b.bank] ?? getDefaultColorIdx(b.bank),
+    }));
+  const activeCardColors = Object.fromEntries(displayBalances.map(b => [b.bank, b.colorIndex]));
 
   // ── Derived stats (use aliased transactions) ─────────────────────────
   const aggregateLiquidity = displayBalances.reduce((s, b) => s + (b.balance || 0), 0);
@@ -590,7 +587,7 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
                       totalCredit={aliasedTransactions.filter(t => t.bank === b.bank && t.tx_type === 'credit').reduce((s, t) => s + t.amount, 0)}
                       totalDebit={aliasedTransactions.filter(t => t.bank === b.bank && t.tx_type === 'debit').reduce((s, t) => s + t.amount, 0)}
                       colorIndex={b.colorIndex}
-                      allBankColors={bankColors}
+                      allBankColors={activeCardColors}
                       onColorChange={saveBankColor}
                     />
                   ))}
