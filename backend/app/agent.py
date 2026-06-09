@@ -8,6 +8,7 @@ import json
 import logging
 import re
 from typing import List, Dict, Any, Optional
+from datetime import datetime
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
@@ -185,7 +186,9 @@ RULES:
 
 AUDIT CONTEXT (current view window):
 - Period: {since_date} to {until_date}
-- When asked about spend, transfers, or any time-bounded question, use this period automatically. Do NOT ask the user to specify a date range — the audit window is already set."""
+- Current actual date: {current_date}
+- When asked about spend, transfers, or any time-bounded question, use this period automatically. Do NOT ask the user to specify a date range — the audit window is already set.
+- Relative time keywords like "today", "this week", "this month", "last month" should be resolved against the current actual date ({current_date})."""
 
 def load_aliases(db_conn, user_id: str) -> List[Dict]:
     """Load user aliases for narration cleaning."""
@@ -424,7 +427,8 @@ def execute_tool(tool_name: str, tool_args: Dict, user_id: str, db_conn) -> str:
 
 # ── Agent Loop ──────────────────────────────────────────────────────────
 def run_agent(user_id: str, message: str, history: List[Dict], db_conn, since_date: Optional[str] = None, until_date: Optional[str] = None) -> Dict:
-    prompt = SYSTEM_PROMPT.format(since_date=since_date or "earliest", until_date=until_date or "present")
+    current_date = datetime.utcnow().strftime("%Y-%m-%d")
+    prompt = SYSTEM_PROMPT.format(since_date=since_date or "earliest", until_date=until_date or "present", current_date=current_date)
     messages = [{"role": "system", "content": prompt}, *history, {"role": "user", "content": message}]
     tool_calls_made = []
     
