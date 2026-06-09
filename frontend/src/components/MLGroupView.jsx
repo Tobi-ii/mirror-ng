@@ -29,6 +29,11 @@ export default function MLGroupView({ transactions, userId, onAliasUpdate, onVie
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [flatMode, setFlatMode] = useState(false);
 
+  // ── FIX: Snapshot the transactions when entering a detail view.
+  // This prevents the reactive useMemo from replacing the current working
+  // set mid-session when onAliasUpdate triggers a parent re-fetch.
+  const [detailSnapshot, setDetailSnapshot] = useState([]);
+
   const isDetail = view === 'detail';
   const prevDetail = useRef(isDetail);
   if (isDetail !== prevDetail.current && onViewChange) {
@@ -54,6 +59,7 @@ export default function MLGroupView({ transactions, userId, onAliasUpdate, onVie
 
   const goBack = () => {
     if (view === 'detail' && selectedGroup) {
+      setDetailSnapshot([]); // clear snapshot on exit
       if (selectedGroup === '__ungrouped' || selectedGroup === '__credits') {
         setSelectedGroup(null); setView('overview');
       } else {
@@ -66,19 +72,43 @@ export default function MLGroupView({ transactions, userId, onAliasUpdate, onVie
     }
   };
 
+  // ── FIX: Capture the exact transactions for this group at the moment
+  // the user taps into it. This snapshot is the source of truth for the
+  // detail view — not the reactive ungrouped/groups memo.
   const openDetail = (groupName) => {
+    let txs = [];
+    if (groupName === '__ungrouped') txs = ungrouped;
+    else if (groupName === '__credits') txs = credited;
+    else if (groups[groupName]) txs = groups[groupName].transactions;
+
+    setDetailSnapshot([...txs]); // snapshot — shallow copy is enough
     setSelectedGroup(groupName);
     setView('detail');
+  };
+
+  // ── FIX: After each alias operation, remove the newly aliased
+  // transactions from the snapshot by checking their current aliased flag
+  // in the refreshed transactions prop. This keeps the detail view accurate
+  // without letting the parent swap in a completely different set.
+  const handleAliasUpdate = () => {
+    setDetailSnapshot(prev =>
+      prev.filter(snapTx => {
+        const current = transactions.find(t => t.id === snapTx.id);
+        // Keep in snapshot only if not yet aliased in the refreshed data.
+        // If not found (stale), also remove.
+        return current && !current.aliased;
+      })
+    );
+    if (onAliasUpdate) onAliasUpdate();
   };
 
   const openGroupList = () => setView('groups');
 
   // ── Level 3: Detail (TransactionList for a specific group) ──
   if (view === 'detail' && selectedGroup) {
-    let txs = [];
-    if (selectedGroup === '__ungrouped') txs = ungrouped;
-    else if (selectedGroup === '__credits') txs = credited;
-    else if (groups[selectedGroup]) txs = groups[selectedGroup].transactions;
+    // Use the snapshot — never the reactive memo — so Alias All only
+    // touches the transactions the user is actually looking at.
+    const txs = detailSnapshot;
 
     return (
       <div className="h-full flex flex-col">
@@ -88,15 +118,23 @@ export default function MLGroupView({ transactions, userId, onAliasUpdate, onVie
             <ChevronLeft size={16} className="text-slate-400" />
           </button>
           <div>
-            <h3 className="text-base font-black tracking-tight text-white">{selectedGroup === '__ungrouped' ? 'Uncategorized' : selectedGroup === '__credits' ? 'Income / Credits' : selectedGroup}</h3>
-            <p className="text-[10px] text-slate-600 font-mono">{txs.length} transaction{txs.length !== 1 ? 's' : ''}</p>
+            <h3 className="text-base font-black tracking-tight text-white">
+              {selectedGroup === '__ungrouped'
+                ? 'Uncategorized'
+                : selectedGroup === '__credits'
+                ? 'Income / Credits'
+                : selectedGroup}
+            </h3>
+            <p className="text-[10px] text-slate-600 font-mono">
+              {txs.length} transaction{txs.length !== 1 ? 's' : ''}
+            </p>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           <TransactionList
             transactions={txs}
             userId={userId}
-            onAliasUpdate={onAliasUpdate}
+            onAliasUpdate={handleAliasUpdate}
           />
         </div>
       </div>
@@ -128,10 +166,14 @@ export default function MLGroupView({ transactions, userId, onAliasUpdate, onVie
                     <Sparkles size={11} className={c.text} />
                     <h4 className={`text-sm font-black tracking-tight ${c.text}`}>{name}</h4>
                   </div>
-                  <p className="text-[10px] text-slate-600 mt-0.5 font-mono">{group.transactions.length} tx · {fmtK(groupTotal(group.transactions))}</p>
+                  <p className="text-[10px] text-slate-600 mt-0.5 font-mono">
+                    {group.transactions.length} tx · {fmtK(groupTotal(group.transactions))}
+                  </p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs font-black tabular-nums text-slate-400">{group.transactions.length}</span>
+                  <span className="text-xs font-black tabular-nums text-slate-400">
+                    {group.transactions.length}
+                  </span>
                   <ChevronLeft size={14} className="text-slate-600 -rotate-180" />
                 </div>
               </button>
@@ -142,7 +184,7 @@ export default function MLGroupView({ transactions, userId, onAliasUpdate, onVie
     );
   }
 
-  // ── Flat Mode: show all transactions as a flat list ──
+  // ── Flat Mode ──
   if (flatMode) {
     return (
       <div className="h-full flex flex-col">
