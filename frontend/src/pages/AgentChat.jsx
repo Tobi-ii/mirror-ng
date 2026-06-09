@@ -78,9 +78,9 @@ export default function AgentChat({ userId, sinceDate, untilDate }) {
         setMessages(prev => [...prev, {
           role: 'assistant',
           content: res.response,
-          tool_calls: []
+          tool_calls: res.tool_calls || []
         }])
-        setModelUsed('intent-agent')
+        setModelUsed(res.model_used || 'intent-agent')
       } else {
         setMessages(prev => [...prev, {
           role: 'assistant',
