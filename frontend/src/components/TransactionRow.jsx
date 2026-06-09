@@ -19,8 +19,6 @@ function countOtherMatches(allTransactions, pattern, excludeNarrations = []) {
     if (!nar.includes(p)) return false;
     // Skip the transaction(s) being aliased
     if (excludeNarrations.some(ex => nar === ex.toLowerCase())) return false;
-    // Skip transactions that already match an ML group
-    if (getMLSuggestion(tx.original_narration || tx.narration || '')) return false;
     return true;
   }).length;
 }

@@ -190,8 +190,6 @@ export default function Dashboard({ userId, onLogout, onCloudSyncChange }) {
         return tx.narration?.toLowerCase().includes(pattern);
       }) : null;
       if (match) {
-        const ml = getMLSuggestion(tx.original_narration || tx.narration || '');
-        if (ml && ml.category !== match.category) return tx;
         return { 
           ...tx, 
           narration: match.display_name, 
