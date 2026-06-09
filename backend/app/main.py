@@ -41,6 +41,7 @@ from .balance_manager import BalanceManager
 from .parsers import get_parser_for_sender
 from .agent import run_agent
 from .intent_agent import run_intent_agent
+from .temporal import get_agent_temporal_context
 
 # ML Modules
 from .ml.classifier import predict_category, train_classifier
@@ -57,7 +58,8 @@ from .models import (
     AgentChatRequest,
     CloudSyncToggle,
     DataExportResponse,
-    DataImportRequest
+    DataImportRequest,
+    OnboardingDatesRequest
 )
 
 load_dotenv()
@@ -843,13 +845,20 @@ async def agent_chat(request: AgentChatRequest, req: Request):
     if is_local:
         mem_db = _make_local_db(request.local_transactions, request.user_id)
         try:
+            temporal_context = get_agent_temporal_context(
+                user_id=request.user_id,
+                payload_since=request.since_date,
+                payload_until=request.until_date,
+                db_conn=mem_db
+            )
             result = run_agent(
                 user_id=request.user_id,
                 message=request.message,
                 history=request.history,
                 db_conn=mem_db,
                 since_date=request.since_date,
-                until_date=request.until_date
+                until_date=request.until_date,
+                temporal_context=temporal_context
             )
             return JSONResponse({"success": True, **result})
         finally:
@@ -857,13 +866,20 @@ async def agent_chat(request: AgentChatRequest, req: Request):
     else:
         conn = get_db()
         try:
+            temporal_context = get_agent_temporal_context(
+                user_id=request.user_id,
+                payload_since=request.since_date,
+                payload_until=request.until_date,
+                db_conn=conn
+            )
             result = run_agent(
                 user_id=request.user_id,
                 message=request.message,
                 history=request.history,
                 db_conn=conn,
                 since_date=request.since_date,
-                until_date=request.until_date
+                until_date=request.until_date,
+                temporal_context=temporal_context
             )
             return JSONResponse({"success": True, **result})
         except Exception as e:
@@ -884,13 +900,20 @@ async def agent_chat_v2(request: AgentChatRequest, req: Request):
     if is_local:
         mem_db = _make_local_db(request.local_transactions, request.user_id)
         try:
+            temporal_context = get_agent_temporal_context(
+                user_id=request.user_id,
+                payload_since=request.since_date,
+                payload_until=request.until_date,
+                db_conn=mem_db
+            )
             result = run_intent_agent(
                 user_id=request.user_id,
                 message=request.message,
                 history=request.history,
                 db_conn=mem_db,
                 since_date=request.since_date,
-                until_date=request.until_date
+                until_date=request.until_date,
+                temporal_context=temporal_context
             )
             return JSONResponse({"success": True, **result})
         finally:
@@ -898,13 +921,20 @@ async def agent_chat_v2(request: AgentChatRequest, req: Request):
     else:
         conn = get_db()
         try:
+            temporal_context = get_agent_temporal_context(
+                user_id=request.user_id,
+                payload_since=request.since_date,
+                payload_until=request.until_date,
+                db_conn=conn
+            )
             result = run_intent_agent(
                 user_id=request.user_id,
                 message=request.message,
                 history=request.history,
                 db_conn=conn,
                 since_date=request.since_date,
-                until_date=request.until_date
+                until_date=request.until_date,
+                temporal_context=temporal_context
             )
             return JSONResponse({"success": True, **result})
         except Exception as e:
@@ -1299,6 +1329,54 @@ async def set_cloud_sync(user_id: str, request: CloudSyncToggle, req: Request):
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail="Failed to update cloud sync preference")
+    finally:
+        conn.close()
+
+
+# ============ ONBOARDING AUDIT DATES ENDPOINTS ============
+
+@app.get("/api/user/onboarding-dates/{user_id}")
+async def get_onboarding_dates(user_id: str, req: Request):
+    token_user_id = await get_current_user_id(req)
+    if not token_user_id or token_user_id != user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    conn = get_db()
+    try:
+        cursor = conn.execute(
+            'SELECT onboarding_start_date, onboarding_end_date FROM users WHERE user_id = ?',
+            (user_id,)
+        )
+        row = cursor.fetchone()
+        return {
+            "success": True,
+            "start_date": row['onboarding_start_date'] if row else None,
+            "end_date": row['onboarding_end_date'] if row else None,
+            "has_onboarding": bool(row and row['onboarding_start_date'] and row['onboarding_end_date'])
+        }
+    except Exception as e:
+        logger.error(f"Error getting onboarding dates: {e}")
+        return {"success": True, "start_date": None, "end_date": None, "has_onboarding": False}
+    finally:
+        conn.close()
+
+
+@app.post("/api/user/onboarding-dates/{user_id}")
+async def set_onboarding_dates(user_id: str, request: OnboardingDatesRequest, req: Request):
+    token_user_id = await get_current_user_id(req)
+    if not token_user_id or token_user_id != user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    conn = get_db()
+    try:
+        conn.execute(
+            'UPDATE users SET onboarding_start_date = ?, onboarding_end_date = ? WHERE user_id = ?',
+            (request.start_date, request.end_date, user_id)
+        )
+        conn.commit()
+        return {"success": True, "start_date": request.start_date, "end_date": request.end_date}
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Error setting onboarding dates: {e}")
+        raise HTTPException(status_code=500, detail="Failed to set onboarding dates")
     finally:
         conn.close()
 

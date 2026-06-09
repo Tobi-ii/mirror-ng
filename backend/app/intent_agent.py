@@ -103,7 +103,13 @@ EXAMPLE OUTPUT: {"intent":"lookup","metric":"max","field":"amount","filters":{"t
 EXAMPLE INPUT: "Show me my last 5 transfers"
 EXAMPLE OUTPUT: {"intent":"list","metric":"count","field":"amount","filters":{"tx_type":"debit","narration_contains":"transfer"},"order_by":"date","order":"desc","limit":5}
 
-OUTPUT ONLY JSON. NO TEXT. NO EXPLANATION."""
+OUTPUT ONLY JSON. NO TEXT. NO EXPLANATION.
+
+AUDIT CONTEXT:
+- The user's financial data is bounded to a specific audit window.
+- When the user asks time-relative questions ("this week", "last month"), use date_from/date_to relative to the current date.
+- If the user asks about a month explicitly outside the audit window, do NOT fabricate data — the query will return empty.
+- This context is already applied as defaults in the prompt above."""
 
 # ── Layer 2: Query Validator ───────────────────────────────────────────
 ALLOWED_INTENTS = {"aggregate", "list", "insight", "lookup"}
@@ -574,7 +580,8 @@ def parse_intent_via_patterns(message: str) -> dict:
 # ── Main Agent Function ────────────────────────────────────────────────
 def run_intent_agent(user_id: str, message: str, history: List[Dict], db_conn,
                      since_date: Optional[str] = None,
-                     until_date: Optional[str] = None) -> Dict:
+                     until_date: Optional[str] = None,
+                     temporal_context: Optional[Dict] = None) -> Dict:
     """
     Production-safe agent:
     Layer 1: LLM → JSON intent (fallback: pattern-matching)
@@ -582,6 +589,11 @@ def run_intent_agent(user_id: str, message: str, history: List[Dict], db_conn,
     Layer 3: Execute query (SQL only)
     Layer 4: Format response
     """
+    
+    # Resolve temporal context if provided
+    if temporal_context:
+        since_date = temporal_context.get("since", since_date)
+        until_date = temporal_context.get("until", until_date)
     
     raw_json = None
     model_used = None

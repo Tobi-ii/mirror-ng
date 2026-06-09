@@ -161,6 +161,7 @@ def init_db():
     # Run schema migrations right after creating tables
     _migrate_users_table(conn)
     _drop_old_email_password_column(conn)
+    _add_onboarding_dates_columns(conn)
     
     conn.commit()
     conn.close()
@@ -203,3 +204,12 @@ def _drop_old_email_password_column(conn):
         pass  # Column already gone
     except Exception as e:
         logger.warning(f"Column cleanup skipped: {e}")
+
+def _add_onboarding_dates_columns(conn):
+    """Add onboarding audit window columns to users table."""
+    from datetime import datetime
+    for col in ['onboarding_start_date', 'onboarding_end_date']:
+        try:
+            conn.execute(f'ALTER TABLE users ADD COLUMN {col} TEXT')
+        except sqlite3.OperationalError:
+            pass

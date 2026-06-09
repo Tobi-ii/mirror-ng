@@ -194,3 +194,14 @@ class AgentChatRequest(BaseModel):
             }
         }
     )
+
+
+class OnboardingDatesRequest(BaseModel):
+    """
+    Request body for setting the user's onboarding audit window.
+    These dates serve as the fallback temporal anchor for the AI agent
+    whenever explicit viewport dates are not provided.
+    """
+    user_id: str
+    start_date: str  # YYYY-MM-DD
+    end_date: str    # YYYY-MM-DD

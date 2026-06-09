@@ -186,9 +186,11 @@ RULES:
 
 AUDIT CONTEXT (current view window):
 - Period: {since_date} to {until_date}
+- Period source: {since_date_source}
 - Current actual date: {current_date}
 - When asked about spend, transfers, or any time-bounded question, use this period automatically. Do NOT ask the user to specify a date range — the audit window is already set.
-- Relative time keywords like "today", "this week", "this month", "last month" should be resolved against the current actual date ({current_date})."""
+- Relative time keywords like "today", "this week", "this month", "last month" should be resolved against the current actual date ({current_date}).
+- If the user asks about a month that falls outside the period above, note that it is outside your active audit scope."""
 
 def load_aliases(db_conn, user_id: str) -> List[Dict]:
     """Load user aliases for narration cleaning."""
@@ -426,9 +428,17 @@ def execute_tool(tool_name: str, tool_args: Dict, user_id: str, db_conn) -> str:
         return f"An error occurred while processing that request."
 
 # ── Agent Loop ──────────────────────────────────────────────────────────
-def run_agent(user_id: str, message: str, history: List[Dict], db_conn, since_date: Optional[str] = None, until_date: Optional[str] = None) -> Dict:
+def run_agent(user_id: str, message: str, history: List[Dict], db_conn, since_date: Optional[str] = None, until_date: Optional[str] = None, temporal_context: Optional[Dict] = None) -> Dict:
+    if temporal_context:
+        since_date = temporal_context.get("since", since_date or "earliest")
+        until_date = temporal_context.get("until", until_date or "present")
+        since_source = temporal_context.get("source", "system")
+        until_source = temporal_context.get("source", "system")
+    else:
+        since_source = "system default"
+        until_source = "system default"
     current_date = datetime.utcnow().strftime("%Y-%m-%d")
-    prompt = SYSTEM_PROMPT.format(since_date=since_date or "earliest", until_date=until_date or "present", current_date=current_date)
+    prompt = SYSTEM_PROMPT.format(since_date=since_date or "earliest", until_date=until_date or "present", since_date_source=since_source, until_date_source=until_source, current_date=current_date)
     messages = [{"role": "system", "content": prompt}, *history, {"role": "user", "content": message}]
     tool_calls_made = []
     
