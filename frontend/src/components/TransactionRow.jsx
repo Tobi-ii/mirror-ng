@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   ArrowDownLeft, ArrowUpRight, Pencil, Check, X, Brain, Sparkles, 
   ChevronDown, ChevronRight, CheckCircle2, Layers, Tags, FolderOpen 
@@ -7,7 +7,7 @@ import { api } from '../services/api';
 import AliasSpreadModal from './AliasSpreadModal';
 
 // ==========================================
-// UTILITIES & CONFIGURATIONS
+// UTILITIES & CONFIGURATIONS (NIGERIAN CONTEXT)
 // ==========================================
 
 function countOtherMatches(allTransactions, pattern, excludeNarrations = []) {
@@ -107,6 +107,67 @@ function groupSimilarTransactions(transactions) {
     }
   }
   return { groups, ungrouped };
+}
+
+// ==========================================
+// CUSTOM COMPONENT: FULLY STYLED SELECT DROPDOWN
+// ==========================================
+function CustomSelect({ value, onChange }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const currentStyle = CATEGORY_COLORS[value] || CATEGORY_COLORS.General;
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs flex items-center justify-between outline-none focus:border-indigo-500 min-h-[32px]"
+      >
+        <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wide ${currentStyle}`}>
+          {value}
+        </span>
+        <ChevronDown size={12} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-zinc-950 border border-white/10 rounded-xl shadow-2xl p-1 max-h-48 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-100">
+          {CATEGORIES.map((cat) => {
+            const catStyle = CATEGORY_COLORS[cat] || CATEGORY_COLORS.General;
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => {
+                  onChange(cat);
+                  setIsOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-white/5 transition-colors flex items-center ${
+                  value === cat ? 'bg-white/5' : ''
+                }`}
+              >
+                <span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-wide ${catStyle}`}>
+                  {cat}
+                </span>
+                {value === cat && <Check size={10} className="text-indigo-400 ml-auto" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ==========================================
@@ -229,25 +290,17 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
               value={aliasName}
               onChange={(e) => setAliasName(e.target.value)}
               placeholder="Display name..."
-              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs outline-none focus:border-indigo-500"
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs outline-none focus:border-indigo-500 min-h-[32px]"
               autoFocus
             />
             <p className="text-[8px] text-slate-600 mt-0.5 truncate font-mono">
               Original: {originalNarration.slice(0, 40)}...
             </p>
           </div>
-          <div className="w-full sm:w-32">
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full bg-black/40 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs outline-none focus:border-indigo-500"
-            >
-              {CATEGORIES.map(cat => (
-                <option key={cat} value={cat} style={{ background: '#1a1a1a', color: '#fff' }}>{cat}</option>
-              ))}
-            </select>
+          <div className="w-full sm:w-44">
+            <CustomSelect value={category} onChange={setCategory} />
           </div>
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
             <button
               onClick={() => handleSaveAlias()}
               disabled={isSaving || !aliasName.trim()}
@@ -412,7 +465,7 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
       if (onAliasUpdate) onAliasUpdate();
     } catch (error) {
       console.error(error);
-    } finally {
+    } fill {
       setIsSaving(false);
     }
   };
@@ -436,10 +489,10 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
         <div className="p-2 space-y-1">
           {showForm && (
             <div className="flex items-center gap-2 mb-2 px-1">
-              <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)} className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs flex-1" />
-              <select value={batchCategory} onChange={(e) => setBatchCategory(e.target.value)} className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs">
-                {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-              </select>
+              <input type="text" value={batchName} onChange={(e) => setBatchName(e.target.value)} className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs flex-1 min-h-[32px]" />
+              <div className="w-44">
+                <CustomSelect value={batchCategory} onChange={setBatchCategory} />
+              </div>
               <button onClick={handleAliasSelected} disabled={isSaving} className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black">Save</button>
             </div>
           )}
@@ -474,7 +527,6 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
   const [creditTransactions, setCreditTransactions] = useState([]);
   const [mlGroups, setMlGroups] = useState({ groups: {}, ungrouped: [] });
   
-  // Dynamic Inspection state hook for tracking explicit active layout targets inside Left/Right split pane view
   const [inspectedAlias, setInspectedAlias] = useState(null);
 
   const [flatBatchIds, setFlatBatchIds] = useState(new Set());
@@ -559,11 +611,9 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
     return <div className="py-20 text-center opacity-10 italic text-sm">No movements detected.</div>;
   }
 
-  // Verification Boundaries checking if everything has successfully hit the categorized target threshold
   const allPendingAliased = Object.keys(mlGroups.groups || {}).length === 0 && pendingTransactions.length === 0;
   const isFullyCategorized = allPendingAliased && creditTransactions.length === 0 && Object.keys(aliasedByCategory).length > 0;
 
-  // --- RENDERING METHOD B: DUAL COLUMN COMPLETED SPLIT LAYOUT ---
   if (isFullyCategorized) {
     const totalAliasedList = transactions.filter(tx => tx.aliased);
     const allUniqueAliasNames = Array.from(new Set(totalAliasedList.map(tx => tx.narration)));
@@ -626,7 +676,6 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                     </div>
                   </button>
 
-                  {/* Reveals underlying transactions that compose this Alias upon click inspection selection */}
                   {isInspecting && (
                     <div className="p-3 bg-black/40 space-y-1 max-h-[250px] overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-150">
                       {occurrences.map((tx) => (
@@ -652,7 +701,6 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
     );
   }
 
-  // --- RENDERING METHOD A: STANDARD INTERMEDIARY AUDIT WORKFLOW ---
   return (
     <div className="space-y-6">
       {Object.keys(aliasedByCategory).length > 0 && (
@@ -718,11 +766,17 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
             <div className="mt-2 space-y-1 pl-4">
               {flatShowForm && flatSection === 'pending' && (
                 <div className="flex items-center gap-2 mb-2 px-1 animate-in fade-in duration-200">
-                  <input type="text" value={flatBatchName} onChange={(e) => setFlatBatchName(e.target.value)} className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs flex-1" placeholder="Display name" />
-                  <select value={flatBatchCategory} onChange={(e) => setFlatBatchCategory(e.target.value)} className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs">
-                    {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                  </select>
-                  <button onClick={handleFlatAliasSubmit} disabled={flatBatchSaving} className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black">Save</button>
+                  <input type="text" value={flatBatchName} onChange={(e) => setFlatBatchName(e.target.value)} className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs flex-1 min-h-[32px]" placeholder="Display name" />
+                  <div className="w-44">
+                    <CustomSelect value={flatBatchCategory} onChange={setFlatBatchCategory} />
+                  </div>
+                  <button 
+                    onClick={handleFlatAliasSubmit} 
+                    disabled={flatBatchSaving} 
+                    className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black disabled:opacity-50"
+                  >
+                    {flatBatchSaving ? 'Saving...' : 'Save'}
+                  </button>
                 </div>
               )}
               {pendingTransactions.map((tx, idx) => (
@@ -734,7 +788,7 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   isAliased={false}
                   index={idx}
                   selected={flatBatchIds.has(tx.id) && flatSection === 'pending'}
-                  selectionCount={flatBatchIds.size}
+                  selectionCount={flatSection === 'pending' ? flatBatchIds.size : 0}
                   onToggleSelect={toggleFlatSelection('pending')}
                   scopeTransactions={pendingTransactions}
                 />
@@ -746,22 +800,37 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
 
       {creditTransactions.length > 0 && (
         <div className="mb-6">
-          <div className="flex items-center justify-between w-full px-4 py-2 bg-emerald-500/5 rounded-xl">
+          <div className="flex items-center justify-between w-full px-4 py-2 bg-white/5 rounded-xl">
             <button onClick={() => setExpandedGroups(p => ({...p, credits: !p.credits}))} className="flex items-center gap-2 text-left">
               {expandedGroups.credits ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
               <ArrowDownLeft size={12} className="text-emerald-400" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-white">Income / Credits</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-white">Inflow Movements</span>
             </button>
             <button onClick={() => handleFlatAliasAll('credits')} className="text-[8px] px-2 py-1 bg-indigo-600/60 text-white rounded-lg font-black uppercase">
-              Alias All
+              Alias All Inflows
             </button>
           </div>
           {expandedGroups.credits && (
             <div className="mt-2 space-y-1 pl-4">
               {flatShowForm && flatSection === 'credits' && (
                 <div className="flex items-center gap-2 mb-2 px-1 animate-in fade-in duration-200">
-                  <input type="text" value={flatBatchName} onChange={(e) => setFlatBatchName(e.target.value)} className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs flex-1" placeholder="Display name" />
-                  <button onClick={handleFlatAliasSubmit} disabled={flatBatchSaving} className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black">Save</button>
+                  <input 
+                    type="text" 
+                    value={flatBatchName} 
+                    onChange={(e) => setFlatBatchName(e.target.value)} 
+                    className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs flex-1 min-h-[32px]" 
+                    placeholder="Inflow Display name" 
+                  />
+                  <div className="w-44">
+                    <CustomSelect value={flatBatchCategory} onChange={setFlatBatchCategory} />
+                  </div>
+                  <button 
+                    onClick={handleFlatAliasSubmit} 
+                    disabled={flatBatchSaving} 
+                    className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black disabled:opacity-50"
+                  >
+                    {flatBatchSaving ? 'Saving...' : 'Save'}
+                  </button>
                 </div>
               )}
               {creditTransactions.map((tx, idx) => (
@@ -773,7 +842,7 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   isAliased={false}
                   index={idx}
                   selected={flatBatchIds.has(tx.id) && flatSection === 'credits'}
-                  selectionCount={flatBatchIds.size}
+                  selectionCount={flatSection === 'credits' ? flatBatchIds.size : 0}
                   onToggleSelect={toggleFlatSelection('credits')}
                   scopeTransactions={creditTransactions}
                 />
