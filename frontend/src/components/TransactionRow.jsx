@@ -7,7 +7,7 @@ import { api } from '../services/api';
 import AliasSpreadModal from './AliasSpreadModal';
 
 // ==========================================
-// UTILITIES & CONFIGURATIONS (NIGERIAN CONTEXT)
+// UTILITIES & CONFIGURATIONS
 // ==========================================
 
 function countOtherMatches(allTransactions, pattern, excludeNarrations = []) {
