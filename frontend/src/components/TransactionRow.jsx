@@ -21,27 +21,37 @@ function countOtherMatches(allTransactions, pattern, excludeNarrations = []) {
   }).length;
 }
 
+// Fixed Core Matrix to prioritize Institutional Hex assignments
 const BANK_COLORS = {
   'Sterling Bank': {
-    border: 'border-l-purple-600',
     bg: 'hover:bg-purple-950/20',
-    dot: 'bg-purple-600',
     creditIcon: 'bg-emerald-500/10 text-emerald-400',
     debitIcon: 'bg-purple-500/10 text-purple-400',
+    defaultHex: '#A020F0'
   },
   'Wema (ALAT)': {
-    border: 'border-l-rose-600',
     bg: 'hover:bg-rose-950/20',
-    dot: 'bg-rose-600',
     creditIcon: 'bg-emerald-500/10 text-emerald-400',
     debitIcon: 'bg-slate-500/10 text-rose-400',
+    defaultHex: '#E11D48'
+  },
+  'Wema Bank': {
+    bg: 'hover:bg-rose-950/20',
+    creditIcon: 'bg-emerald-500/10 text-emerald-400',
+    debitIcon: 'bg-slate-500/10 text-rose-400',
+    defaultHex: '#E11D48'
+  },
+  'OPay': {
+    bg: 'hover:bg-emerald-950/20',
+    creditIcon: 'bg-emerald-500/10 text-emerald-400',
+    debitIcon: 'bg-emerald-500/10 text-emerald-400',
+    defaultHex: '#10B981'
   },
   default: {
-    border: 'border-l-slate-600',
     bg: 'hover:bg-slate-900/20',
-    dot: 'bg-slate-600',
     creditIcon: 'bg-emerald-500/10 text-emerald-400',
     debitIcon: 'bg-slate-500/10 text-slate-400',
+    defaultHex: '#475569'
   }
 };
 
@@ -103,7 +113,7 @@ function groupSimilarTransactions(transactions) {
       }
       groups[key].transactions.push(tx);
     } else {
-      ungrouped.push(tx);
+      overflow: ungrouped.push(tx);
     }
   }
   return { groups, ungrouped };
@@ -173,8 +183,20 @@ function CustomSelect({ value, onChange }) {
 // ==========================================
 // CHILD COMPONENT: TRANSACTION ITEM ROW
 // ==========================================
-
-function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliased, index, showEditButton = true, selected, selectionCount, onToggleSelect, scopeTransactions }) {
+function TransactionItem({ 
+  tx, 
+  userId, 
+  onAliasUpdate, 
+  isAliased: initialIsAliased, 
+  index, 
+  showEditButton = true, 
+  selected, 
+  selectionCount, 
+  onToggleSelect, 
+  scopeTransactions,
+  userBankColors = {}, // Added parameter injection
+  colorOptions = []    // Added colorOptions parameter array
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [aliasName, setAliasName] = useState(tx?.narration || '');
   const [category, setCategory] = useState(tx?.category || 'General');
@@ -197,7 +219,17 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
   
   const mlSuggestion = !isAliased && tx.tx_type === 'debit' ? getMLSuggestion(tx.original_narration || tx.narration) : null;
   const isCredit = tx.tx_type === 'credit';
-  const theme = BANK_COLORS[tx.bank] || BANK_COLORS.default;
+  
+  // --- PRIORITY RESOLUTION ACCENT DESIGN SYSTEM ---
+  const defaultBankTheme = BANK_COLORS[tx.bank] || BANK_COLORS.default;
+  const chosenColorIdx = userBankColors?.[tx.bank];
+  
+  let currentHexColor = defaultBankTheme.defaultHex;
+  if (chosenColorIdx !== undefined && chosenColorIdx !== null && colorOptions?.[chosenColorIdx]) {
+    currentHexColor = colorOptions[chosenColorIdx].bg; // Maps directly to picker configuration hex payload value
+  }
+  // ------------------------------------------------
+
   const originalNarration = tx.original_narration || tx.narration;
 
   const fmt = (n) => new Intl.NumberFormat('en-NG', {
@@ -279,8 +311,11 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
   return (
     <>
     <div
-      className={`flex items-center justify-between px-5 py-5 border-l-2 ${isBatchSelected ? 'border-l-indigo-500' : theme.border} ${theme.bg} ${isBatchSelected ? 'bg-indigo-500/10' : ''} rounded-r-2xl transition-all group mb-1.5 hover:bg-opacity-30`}
-      style={{ animationDelay: `${(index || 0) * 30}ms` }}
+      className={`flex items-center justify-between px-5 py-5 ${defaultBankTheme.bg} ${isBatchSelected ? 'bg-indigo-500/10' : ''} rounded-r-2xl transition-all group mb-1.5 hover:bg-opacity-30`}
+      style={{ 
+        animationDelay: `${(index || 0) * 30}ms`,
+        borderLeft: `2px solid ${isBatchSelected ? '#6366f1' : currentHexColor}` // Dynamic runtime border accent rendering
+      }}
     >
       {isEditing ? (
         <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -319,8 +354,14 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
       ) : (
         <>
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isBatchSelected ? 'bg-indigo-400' : theme.dot}`} />
-            <div className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center ${isCredit ? theme.creditIcon : theme.debitIcon}`}>
+            {/* Dynamic context bullet mapping */}
+            <div 
+              className="w-1.5 h-1.5 rounded-full flex-shrink-0" 
+              style={{
+                backgroundColor: isBatchSelected ? '#818cf8' : currentHexColor
+              }}
+            />
+            <div className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center ${isCredit ? defaultBankTheme.creditIcon : defaultBankTheme.debitIcon}`}>
               {isCredit ? <ArrowDownLeft size={14} /> : <ArrowUpRight size={14} />}
             </div>
             <div className="min-w-0 flex-1">
@@ -385,8 +426,7 @@ function TransactionItem({ tx, userId, onAliasUpdate, isAliased: initialIsAliase
 // ==========================================
 // CHILD COMPONENT: ALIASED CATEGORY GROUP CONTAINER
 // ==========================================
-
-function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, isExpanded, onToggle }) {
+function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, isExpanded, onToggle, userBankColors, colorOptions }) {
   const [expanded, setExpanded] = useState(isExpanded);
   const toggleExpand = () => {
     setExpanded(!expanded);
@@ -421,6 +461,8 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
               selectionCount={0}
               onToggleSelect={() => {}}
               scopeTransactions={transactions}
+              userBankColors={userBankColors} // Downstream forwarding
+              colorOptions={colorOptions}     // Downstream forwarding
              />
            ))}
          </div>
@@ -432,8 +474,7 @@ function AliasedCategoryGroup({ category, transactions, userId, onAliasUpdate, i
 // ==========================================
 // CHILD COMPONENT: ML SUGGESTED BUCKET ACCORDION
 // ==========================================
-
-function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isExpanded, onToggle, selectedIds, toggleSelection }) {
+function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isExpanded, onToggle, selectedIds, toggleSelection, userBankColors, colorOptions }) {
   const [batchName, setBatchName] = useState(group?.display_name || '');
   const [batchCategory, setBatchCategory] = useState(group?.category || 'General');
   const [isSaving, setIsSaving] = useState(false);
@@ -465,7 +506,7 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
       if (onAliasUpdate) onAliasUpdate();
     } catch (error) {
       console.error(error);
-    } fill {
+    } finally {
       setIsSaving(false);
     }
   };
@@ -508,6 +549,8 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
               selectionCount={selectedIds.size}
               onToggleSelect={toggleSelection}
               scopeTransactions={group.transactions}
+              userBankColors={userBankColors} // Downstream forwarding
+              colorOptions={colorOptions}     // Downstream forwarding
             />
           ))}
         </div>
@@ -519,8 +562,13 @@ function GroupedTransactionGroup({ group, groupName, userId, onAliasUpdate, isEx
 // ==========================================
 // MAIN EXPORT CONTAINER COMPONENT
 // ==========================================
-
-export default function TransactionList({ transactions = [], userId, onAliasUpdate }) {
+export default function TransactionList({ 
+  transactions = [], 
+  userId, 
+  onAliasUpdate,
+  userBankColors = {}, // Exposing override target state maps 
+  colorOptions = []    // Exposing reference options metrics arrays
+}) {
   const [expandedGroups, setExpandedGroups] = useState({ aliasedCategories: {}, mlGroups: true, pending: true, credits: true });
   const [aliasedByCategory, setAliasedByCategory] = useState({});
   const [pendingTransactions, setPendingTransactions] = useState([]);
@@ -637,6 +685,8 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
               userId={userId}
               onAliasUpdate={onAliasUpdate}
               isExpanded={true}
+              userBankColors={userBankColors}
+              colorOptions={colorOptions}
             />
           ))}
         </div>
@@ -717,6 +767,8 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
               userId={userId}
               onAliasUpdate={onAliasUpdate}
               isExpanded={expandedGroups.aliasedCategories[category] ?? true}
+              userBankColors={userBankColors}
+              colorOptions={colorOptions}
             />
           ))}
         </div>
@@ -743,6 +795,8 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   isExpanded={true}
                   selectedIds={flatBatchIds}
                   toggleSelection={toggleFlatSelection('pending')}
+                  userBankColors={userBankColors}
+                  colorOptions={colorOptions}
                 />
               ))}
             </div>
@@ -750,31 +804,30 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
         </div>
       )}
 
-      {pendingTransactions.length > 0 && (
+      {/* Pending Debits Block Container Layout */}
+      {(pendingTransactions.length > 0 || flatSection === 'pending') && (
         <div className="mb-6">
-          <div className="flex items-center justify-between w-full px-4 py-2 bg-white/5 rounded-xl">
-            <button onClick={() => setExpandedGroups(p => ({...p, pending: !p.pending}))} className="flex items-center gap-2 text-left">
+          <div className="flex items-center justify-between w-full px-4 py-2 bg-white/5 rounded-xl text-left mb-2">
+            <button onClick={() => setExpandedGroups(p => ({ ...p, pending: !p.pending }))} className="flex items-center gap-2 text-left min-w-0 flex-1">
               {expandedGroups.pending ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
               <Tags size={12} className="text-slate-400" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-white">Other Transactions</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-white">Unassigned Inflows & Outflows</span>
+              <span className="text-[8px] px-1.5 py-0.5 bg-white/10 rounded-full font-mono">{pendingTransactions.length} items</span>
             </button>
-            <button onClick={() => handleFlatAliasAll('pending')} className="text-[8px] px-2 py-1 bg-indigo-600/60 text-white rounded-lg font-black uppercase">
-              Alias All
+            <button onClick={() => handleFlatAliasAll('pending')} className="text-[8px] px-2 py-1 bg-white/5 hover:bg-white/10 text-slate-300 rounded-lg font-black uppercase tracking-wider">
+              Alias Selection
             </button>
           </div>
-          {expandedGroups.pending && (
-            <div className="mt-2 space-y-1 pl-4">
+
+          {expandedGroups.pending && pendingTransactions.length > 0 && (
+            <div className="space-y-1">
               {flatShowForm && flatSection === 'pending' && (
-                <div className="flex items-center gap-2 mb-2 px-1 animate-in fade-in duration-200">
-                  <input type="text" value={flatBatchName} onChange={(e) => setFlatBatchName(e.target.value)} className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs flex-1 min-h-[32px]" placeholder="Display name" />
+                <div className="flex items-center gap-2 mb-2 bg-zinc-900/60 p-3 rounded-xl border border-white/5 animate-in fade-in duration-100">
+                  <input type="text" value={flatBatchName} onChange={(e) => setFlatBatchName(e.target.value)} placeholder="Batch Display Name..." className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs flex-1 min-h-[32px] outline-none focus:border-indigo-500" />
                   <div className="w-44">
                     <CustomSelect value={flatBatchCategory} onChange={setFlatBatchCategory} />
                   </div>
-                  <button 
-                    onClick={handleFlatAliasSubmit} 
-                    disabled={flatBatchSaving} 
-                    className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black disabled:opacity-50"
-                  >
+                  <button onClick={handleFlatAliasSubmit} disabled={flatBatchSaving} className="text-xs px-4 py-1.5 bg-indigo-600 text-white font-black rounded-lg hover:bg-indigo-700 transition-colors shrink-0 disabled:opacity-50">
                     {flatBatchSaving ? 'Saving...' : 'Save'}
                   </button>
                 </div>
@@ -787,10 +840,13 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   onAliasUpdate={onAliasUpdate}
                   isAliased={false}
                   index={idx}
+                  showEditButton={true}
                   selected={flatBatchIds.has(tx.id) && flatSection === 'pending'}
-                  selectionCount={flatSection === 'pending' ? flatBatchIds.size : 0}
+                  selectionCount={flatBatchIds.size}
                   onToggleSelect={toggleFlatSelection('pending')}
                   scopeTransactions={pendingTransactions}
+                  userBankColors={userBankColors}
+                  colorOptions={colorOptions}
                 />
               ))}
             </div>
@@ -798,37 +854,30 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
         </div>
       )}
 
+      {/* Credit Section Mapping */}
       {creditTransactions.length > 0 && (
         <div className="mb-6">
-          <div className="flex items-center justify-between w-full px-4 py-2 bg-white/5 rounded-xl">
-            <button onClick={() => setExpandedGroups(p => ({...p, credits: !p.credits}))} className="flex items-center gap-2 text-left">
+          <div className="flex items-center justify-between w-full px-4 py-2 bg-white/5 rounded-xl mb-2">
+            <button onClick={() => setExpandedGroups(p => ({ ...p, credits: !p.credits }))} className="flex items-center gap-2 text-left min-w-0 flex-1">
               {expandedGroups.credits ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
-              <ArrowDownLeft size={12} className="text-emerald-400" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-white">Inflow Movements</span>
+              <CheckCircle2 size={12} className="text-emerald-400" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-white">Inflow Credits</span>
+              <span className="text-[8px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 rounded-full font-mono">{creditTransactions.length} items</span>
             </button>
-            <button onClick={() => handleFlatAliasAll('credits')} className="text-[8px] px-2 py-1 bg-indigo-600/60 text-white rounded-lg font-black uppercase">
-              Alias All Inflows
+            <button onClick={() => handleFlatAliasAll('credits')} className="text-[8px] px-2 py-1 bg-white/5 hover:bg-white/10 text-slate-300 rounded-lg font-black uppercase tracking-wider">
+              Alias Credits
             </button>
           </div>
+
           {expandedGroups.credits && (
-            <div className="mt-2 space-y-1 pl-4">
+            <div className="space-y-1">
               {flatShowForm && flatSection === 'credits' && (
-                <div className="flex items-center gap-2 mb-2 px-1 animate-in fade-in duration-200">
-                  <input 
-                    type="text" 
-                    value={flatBatchName} 
-                    onChange={(e) => setFlatBatchName(e.target.value)} 
-                    className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-xs flex-1 min-h-[32px]" 
-                    placeholder="Inflow Display name" 
-                  />
+                <div className="flex items-center gap-2 mb-2 bg-zinc-900/60 p-3 rounded-xl border border-white/5 animate-in fade-in duration-100">
+                  <input type="text" value={flatBatchName} onChange={(e) => setFlatBatchName(e.target.value)} placeholder="Batch Display Name..." className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs flex-1 min-h-[32px] outline-none focus:border-indigo-500" />
                   <div className="w-44">
                     <CustomSelect value={flatBatchCategory} onChange={setFlatBatchCategory} />
                   </div>
-                  <button 
-                    onClick={handleFlatAliasSubmit} 
-                    disabled={flatBatchSaving} 
-                    className="text-[8px] px-2 py-1 bg-indigo-600 text-white rounded-lg font-black disabled:opacity-50"
-                  >
+                  <button onClick={handleFlatAliasSubmit} disabled={flatBatchSaving} className="text-xs px-4 py-1.5 bg-indigo-600 text-white font-black rounded-lg hover:bg-indigo-700 transition-colors shrink-0 disabled:opacity-50">
                     {flatBatchSaving ? 'Saving...' : 'Save'}
                   </button>
                 </div>
@@ -841,10 +890,13 @@ export default function TransactionList({ transactions = [], userId, onAliasUpda
                   onAliasUpdate={onAliasUpdate}
                   isAliased={false}
                   index={idx}
+                  showEditButton={true}
                   selected={flatBatchIds.has(tx.id) && flatSection === 'credits'}
-                  selectionCount={flatSection === 'credits' ? flatBatchIds.size : 0}
+                  selectionCount={flatBatchIds.size}
                   onToggleSelect={toggleFlatSelection('credits')}
                   scopeTransactions={creditTransactions}
+                  userBankColors={userBankColors}
+                  colorOptions={colorOptions}
                 />
               ))}
             </div>
