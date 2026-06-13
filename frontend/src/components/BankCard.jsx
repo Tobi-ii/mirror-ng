@@ -64,10 +64,20 @@ export default function BankCard({
     .filter(([otherBank]) => otherBank !== bank)
     .map(([, idx]) => idx);
 
+  // Core balance formatter
   const fmt = (n) =>
     new Intl.NumberFormat('en-NG', {
       style: 'currency', currency: 'NGN', minimumFractionDigits: 2,
     }).format(n);
+
+  // Dynamic flow formatter that isolates the raw positive value and strips currency prefixes cleanly
+  const fmtFlow = (v) => {
+    const absoluteValue = Math.abs(v);
+    return new Intl.NumberFormat('en-NG', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(absoluteValue);
+  };
 
   const fmtDate = (s) =>
     s ? new Date(s).toLocaleDateString('en-NG', {
@@ -103,7 +113,7 @@ export default function BankCard({
                 <CreditCard size={22} className="opacity-90" />
               </button>
 
-              {/* ── Horizontal Row Color Picker ── */}
+              {/* Row Color Picker */}
               {showPicker && (
                 <div className="absolute left-14 top-0 flex items-center gap-1.5 bg-black/50 backdrop-blur-xl border border-white/10 px-3 py-2 rounded-2xl shadow-2xl animate-in fade-in slide-in-from-left-2 duration-200 z-40 max-w-[130px] sm:max-w-[170px] md:max-w-[210px] overflow-x-auto scrollbar-none">
                   {COLOR_OPTIONS.map((option, idx) => {
@@ -146,7 +156,7 @@ export default function BankCard({
           </div>
         </div>
 
-        {/* ── Hover panel — Disappears entirely if picker is open ── */}
+        {/* Hover panel — Disappears entirely if picker is open */}
         <div 
           className={`w-0 opacity-0 transition-all duration-500 ease-in-out border-l border-white/10 bg-black/10 backdrop-blur-md flex flex-col justify-center px-0 gap-3 overflow-hidden z-10 ${
             showPicker 
@@ -154,23 +164,27 @@ export default function BankCard({
               : 'group-hover:w-full group-hover:flex-1 group-hover:opacity-100 group-hover:px-5'
           }`}
         >
+          {/* Dynamic Inflow Handling */}
           <div className="py-1 whitespace-nowrap">
             <div className="flex items-center gap-1.5 opacity-40 mb-1">
               <TrendingUp size={11} className="text-emerald-400" />
               <span className="text-[7px] font-black uppercase tracking-widest">Inflow</span>
             </div>
             <p className="text-xs font-black text-emerald-400 tabular-nums">
-              +{fmt(totalCredit).replace('NGN', '').trim()}
+              +{fmtFlow(totalCredit)}
             </p>
           </div>
+          
           <div className="h-[1px] bg-white/5 w-full shrink-0" />
+          
+          {/* Dynamic Outflow Handling */}
           <div className="py-1 whitespace-nowrap">
             <div className="flex items-center gap-1.5 opacity-40 mb-1">
               <TrendingDown size={11} className="text-rose-400" />
               <span className="text-[7px] font-black uppercase tracking-widest">Outflow</span>
             </div>
             <p className="text-xs font-black text-rose-400 tabular-nums">
-              -{fmt(totalDebit).replace('NGN', '').trim()}
+              -{fmtFlow(totalDebit)}
             </p>
           </div>
         </div>
