@@ -1046,10 +1046,8 @@ def _sync_transactions_blocking(
 
     effective_since = request.since_date
     last_sync_at = user['last_sync_at']
-    if not request.full_sync and last_sync_at:
-        last_sync_date = last_sync_at.split('T')[0]
-        if not effective_since or last_sync_date > effective_since:
-            effective_since = last_sync_date
+    if not request.full_sync and not effective_since and last_sync_at:
+        effective_since = last_sync_at.split('T')[0]
     if not effective_since:
         effective_since = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
 
