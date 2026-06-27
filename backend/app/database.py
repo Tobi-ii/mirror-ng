@@ -197,6 +197,11 @@ def init_db():
         ON transactions(user_id, category)
     ''')
 
+    conn.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_transaction
+        ON transactions(user_id, bank, amount, timestamp, narration)
+    ''')
+
     # ── User preferences (cloud sync toggle, etc.) ─────────────────
     conn.execute('''
         CREATE TABLE IF NOT EXISTS user_prefs (

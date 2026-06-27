@@ -1201,8 +1201,10 @@ def _sync_transactions_blocking(
             cursor = conn.execute('''
                 SELECT id FROM transactions
                 WHERE user_id = ? AND bank = ? AND amount = ? AND timestamp = ?
+                AND (narration = ? OR original_narration = ?)
             ''', (user_id, parsed_tx.bank, parsed_tx.amount,
-                  parsed_tx.timestamp.isoformat() if parsed_tx.timestamp else ""))
+                  parsed_tx.timestamp.isoformat() if parsed_tx.timestamp else "",
+                  parsed_tx.narration, parsed_tx.narration))
             if cursor.fetchone():
                 continue
 
